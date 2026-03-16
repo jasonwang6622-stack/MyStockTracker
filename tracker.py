@@ -206,26 +206,27 @@ selected_account = st.selectbox("👤 選擇要查看的帳戶", account_list)
 
 # --- 核心顯示邏輯 ---
 if selected_account in accounts_data:
-    st.write(f"### 📊 【 {selected_account} 】 的投資總覽")
+    # 標題加上帳戶名稱
+    st.header(f"💼 帳戶：{selected_account}")
     
     data = accounts_data[selected_account]
     inventory = data['inventory']
     cash_flows = data['cash_flows']
 
-    total_market_value, total_unrealized_pnl, total_realized_pnl = 0.0, 0.0, 0.0
+    total_market_value = 0.0
+    total_unrealized_pnl = 0.0
+    total_realized_pnl = 0.0
+    total_invested_cost = 0.0  # 新增：總投入成本
     portfolio_data = []
 
+    # 1. 核心運算
     for sym, inv_data in inventory.items():
         shares = inv_data['shares']
         total_cost = inv_data['total_cost']
         total_realized_pnl += inv_data['realized_pnl']
         
-        # 只要有股份，就應該顯示出來
         if shares > 0:
             current_price = get_current_price(sym)
-            
-            # 如果抓不到市價 (current_price 為 0)，就先拿平均成本當市價，避免畫面崩潰
-            display_price = current_price if current_price > 0 else (total_cost / shares)
             market_value = current_price * shares
             unrealized_pnl = market_value - total_cost if current_price > 0 else 0.0
             avg_price = total_cost / shares
@@ -233,16 +234,71 @@ if selected_account in accounts_data:
             
             total_market_value += market_value
             total_unrealized_pnl += unrealized_pnl
+            total_invested_cost += total_cost # 加總個別標的成本
             
             portfolio_data.append({
-                "🏷️ 股票代號": sym,
-                "📦 庫存股數": int(shares),
+                "🏷️ 股票": sym,
+                "📦 股數": int(shares),
                 "🪙 平均成本": round(avg_price, 2),
                 "🔔 最新市價": round(current_price, 2) if current_price > 0 else "抓取失敗",
-                "💎 目前現值": round(market_value, 0),
-                "📈 未實現損益": round(unrealized_pnl, 0),
-                "🚀 報酬率 (%)": f"{roi:.2f}%"
+                "💎 市值": round(market_value, 0),
+                "📈 損益": round(unrealized_pnl, 0),
+                "🚀 報酬率": f"{roi:.2f}%"
             })
+
+    # ==========================================
+    # 第一層：【投資總覽】
+    # ==========================================
+    st.subheader("📊 帳戶總結資產")
+    
+    # 計算 XIRR
+    today = pd.to_datetime(datetime.today().date())
+    temp_cash_flows = cash_flows.copy()
+    if total_market_value > 0:
+        temp_cash_flows.append((today, total_market_value))
+    
+    try:
+        dates = [cf[0] for cf in temp_cash_flows]
+        amounts = [cf[1] for cf in temp_cash_flows]
+        xirr_val = xirr(dates, amounts)
+        xirr_percentage = xirr_val * 100 if xirr_val else 0.0
+    except:
+        xirr_percentage = 0.0
+
+    # 用指標卡顯示，現在有 5 個指標，所以分兩排或縮小顯示
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("💰 總市值", f"${total_market_value:,.0f}")
+    c2.metric("🪙 總投資成本", f"${total_invested_cost:,.0f}")
+    c3.metric("📉 未實現損益", f"${total_unrealized_pnl:,.0f}", delta=f"{total_unrealized_pnl:,.0f}")
+    c4.metric("🧧 已實現損益", f"${total_realized_pnl:,.0f}")
+    c5.metric("📊 年化報酬 (XIRR)", f"{xirr_percentage:.2f}%")
+
+    st.divider()
+
+    # ==========================================
+    # 第二層：【庫存明細】(完整一列)
+    # ==========================================
+    st.subheader("📋 個別標的明細")
+    if portfolio_data:
+        df_portfolio = pd.DataFrame(portfolio_data)
+        # 讓表格佔滿整個寬度，方便一眼看完
+        st.dataframe(df_portfolio, use_container_width=True, hide_index=True)
+    else:
+        st.info("💡 目前該帳戶無庫存紀錄。")
+
+    # ==========================================
+    # 第三層：【資產配置】
+    # ==========================================
+    if portfolio_data:
+        st.divider()
+        st.subheader("🥧 資產配置比例")
+        # 將圖表寬度稍微縮小，置中顯示
+        col_empty1, col_chart, col_empty2 = st.columns([1, 2, 1])
+        with col_chart:
+            fig = px.pie(df_portfolio, values='💎 市值', names='🏷️ 股票', hole=0.4,
+                         color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig.update_layout(margin=dict(t=30, b=0, l=0, r=0))
+            st.plotly_chart(fig, use_container_width=True)
 
     # --- 顯示指標卡 (加上防呆檢查) ---
     if portfolio_data or total_realized_pnl != 0:
