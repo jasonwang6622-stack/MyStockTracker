@@ -12,6 +12,38 @@ from streamlit_gsheets import GSheetsConnection
 st.set_page_config(page_title="股票庫存追蹤系統", page_icon="📈", layout="wide")
 st.title("📈 股票追蹤系統")
 
+# ==========================================
+# 🔒 密碼鎖系統 (新增這個區塊)
+# ==========================================
+def check_password():
+    """驗證使用者輸入的密碼是否正確"""
+    def password_entered():
+        # 檢查輸入的密碼有沒有和 secrets 裡的一樣
+        if st.session_state["password"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # 驗證成功後就把輸入框的密碼清掉，比較安全
+        else:
+            st.session_state["password_correct"] = False
+
+    # 如果是第一次進來，還沒有驗證過
+    if "password_correct" not in st.session_state:
+        st.text_input("🔒 請輸入密碼以查看你的資產", type="password", on_change=password_entered, key="password")
+        return False
+        
+    # 如果輸入錯誤
+    elif not st.session_state["password_correct"]:
+        st.text_input("🔒 請輸入密碼以查看你的資產", type="password", on_change=password_entered, key="password")
+        st.error("❌ 密碼錯誤，請重新輸入！")
+        return False
+        
+    # 密碼正確，放行！
+    else:
+        return True
+
+# --- 🛑 守門員：如果密碼不對，就立刻停止執行後面的所有程式 ---
+if not check_password():
+    st.stop()
+
 # 建立連線 (ttl=0 代表每次都抓取最新資料，不使用快取)
 conn = st.connection("gsheets", type=GSheetsConnection)
 df = conn.read(spreadsheet="https://docs.google.com/spreadsheets/d/1x1zFrreF7xfPqp6eyToih1ZJpUVrV_Nk9FpyCneM5AU/edit", worksheet="工作表1", ttl=0)
