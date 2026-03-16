@@ -188,16 +188,91 @@ for index, row in df.iterrows():
 account_list = list(accounts_data.keys())
 
 if not account_list:
-    st.warning("⚠️ 系統偵測到資料庫是空的，或是帳戶格式不正確。")
-    st.info("💡 請在左側輸入一筆交易（包含帳戶、股票、股數、價格），並按下儲存。")
+    st.info("👋 歡迎！請從左側邊欄新增第一筆紀錄（記得台股代號要加 .TW 或 .TWO 喔）")
     st.stop()
 
-# 讓選單預設選第一個帳戶
-selected_account = st.selectbox("👤 選擇要查看的帳戶", account_list, index=0)
+selected_account = st.selectbox("👤 選擇要查看的帳戶", account_list)
 
+# --- 核心顯示邏輯 ---
 if selected_account in accounts_data:
-    st.write(f"### 📊 【 {selected_account} 】的投資總覽")
-    # ... 後面接原本的 data = accounts_data[selected_account] ...
+    st.write(f"### 📊 【 {selected_account} 】 的投資總覽")
+    
+    data = accounts_data[selected_account]
+    inventory = data['inventory']
+    cash_flows = data['cash_flows']
+
+    total_market_value, total_unrealized_pnl, total_realized_pnl = 0.0, 0.0, 0.0
+    portfolio_data = []
+
+    for sym, inv_data in inventory.items():
+        shares = inv_data['shares']
+        total_cost = inv_data['total_cost']
+        total_realized_pnl += inv_data['realized_pnl']
+        
+        # 只要有股份，就應該顯示出來
+        if shares > 0:
+            current_price = get_current_price(sym)
+            
+            # 如果抓不到市價 (current_price 為 0)，就先拿平均成本當市價，避免畫面崩潰
+            display_price = current_price if current_price > 0 else (total_cost / shares)
+            market_value = current_price * shares
+            unrealized_pnl = market_value - total_cost if current_price > 0 else 0.0
+            avg_price = total_cost / shares
+            roi = (unrealized_pnl / total_cost) * 100 if (total_cost > 0 and current_price > 0) else 0.0
+            
+            total_market_value += market_value
+            total_unrealized_pnl += unrealized_pnl
+            
+            portfolio_data.append({
+                "🏷️ 股票代號": sym,
+                "📦 庫存股數": int(shares),
+                "🪙 平均成本": round(avg_price, 2),
+                "🔔 最新市價": round(current_price, 2) if current_price > 0 else "抓取失敗",
+                "💎 目前現值": round(market_value, 0),
+                "📈 未實現損益": round(unrealized_pnl, 0),
+                "🚀 報酬率 (%)": f"{roi:.2f}%"
+            })
+
+    # --- 顯示指標卡 (加上防呆檢查) ---
+    if portfolio_data or total_realized_pnl != 0:
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("💰 總市值", f"${total_market_value:,.0f}")
+        col2.metric("📉 未實現損益", f"${total_unrealized_pnl:,.0f}")
+        col3.metric("🧧 已實現損益", f"${total_realized_pnl:,.0f}")
+        
+        # 計算 XIRR
+        today = pd.to_datetime(datetime.today().date())
+        temp_cash_flows = cash_flows.copy()
+        if total_market_value > 0:
+            temp_cash_flows.append((today, total_market_value))
+        
+        try:
+            dates = [cf[0] for cf in temp_cash_flows]
+            amounts = [cf[1] for cf in temp_cash_flows]
+            xirr_val = xirr(dates, amounts)
+            xirr_percentage = xirr_val * 100 if xirr_val else 0.0
+        except:
+            xirr_percentage = 0.0
+        
+        col4.metric("📊 年化報酬率", f"{xirr_percentage:.2f}%")
+
+        st.divider()
+
+        # 顯示表格與圓餅圖
+        col_table, col_chart = st.columns([3, 2])
+        with col_table:
+            st.write("#### 📝 庫存明細")
+            if portfolio_data:
+                st.dataframe(pd.DataFrame(portfolio_data), use_container_width=True, hide_index=True)
+            else:
+                st.info("目前無庫存股份。")
+        with col_chart:
+            st.write("#### 🥧 資產配置")
+            if portfolio_data and total_market_value > 0:
+                fig = px.pie(pd.DataFrame(portfolio_data), values='💎 目前現值', names='🏷️ 股票代號', hole=0.4)
+                st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("⚠️ 帳戶中沒有有效的庫存資料。請檢查股票代號是否包含 .TW 或 .TWO。")
 
 # ==========================================
 # 5. ⚙️ 管理與刪除交易紀錄 (更新回 Google Sheets)
