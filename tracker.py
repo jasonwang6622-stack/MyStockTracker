@@ -187,17 +187,18 @@ for index, row in df.iterrows():
 # ==========================================
 account_list = list(accounts_data.keys())
 
-# --- 🛡️ 新增的安全鎖：如果沒有抓到任何有效帳戶，就停止往下畫圖 ---
 if not account_list:
-    st.info("👋 目前還沒有任何有效的交易紀錄，請從左側邊欄新增一筆吧！")
+    st.warning("⚠️ 系統偵測到資料庫是空的，或是帳戶格式不正確。")
+    st.info("💡 請在左側輸入一筆交易（包含帳戶、股票、股數、價格），並按下儲存。")
     st.stop()
 
-selected_account = st.selectbox("👤 選擇要查看的帳戶", account_list)
+# 讓選單預設選第一個帳戶
+selected_account = st.selectbox("👤 選擇要查看的帳戶", account_list, index=0)
 
-# 確保有選到帳戶才繼續執行
 if selected_account in accounts_data:
     st.write(f"### 📊 【 {selected_account} 】的投資總覽")
-    data = accounts_data[selected_account]
+    # ... 後面接原本的 data = accounts_data[selected_account] ...
+
 # ==========================================
 # 5. ⚙️ 管理與刪除交易紀錄 (更新回 Google Sheets)
 # ==========================================
