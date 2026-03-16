@@ -34,11 +34,35 @@ if not df.empty:
 # ==========================================
 st.sidebar.header("✍️ 新增交易紀錄")
 
+# --- 🚀 進階功能：動態可搜尋選單 ---
+# 1. 自動抓取資料庫裡「你已經買過」的股票代號，去掉重複值並排序
+if not df.empty and 'Symbol' in df.columns:
+    existing_symbols = sorted(df['Symbol'].dropna().unique().tolist())
+else:
+    existing_symbols = ["2330.TW", "0050.TW"] # 如果是空表，給個預設值
+    
+# 2. 在選單最後面加上一個「新增」的選項
+symbol_options = existing_symbols + ["➕ 新增其他股票..."]
+
+# 3. 顯示下拉式選單 (💡 這裡可以直接輸入數字搜尋！)
+selected_option = st.sidebar.selectbox("🏷️ 選擇股票 (點擊後可直接輸入數字搜尋)", symbol_options)
+
+# 4. 判斷使用者的選擇
+if selected_option == "➕ 新增其他股票...":
+    # 如果選擇新增，就彈出一個文字輸入框讓他手動打新代號
+    final_symbol = st.sidebar.text_input("✏️ 手動輸入新代號 (上市.TW / 上櫃.TWO)", placeholder="例如: 8069.TWO")
+else:
+    # 如果選擇已有的股票，就把選單選到的值給它
+    final_symbol = selected_option
+
+# --- 下方是原本固定不變的表單 ---
 with st.sidebar.form("transaction_form", clear_on_submit=True):
     f_account = st.text_input("👤 帳戶名稱", value="主要帳戶")
     f_date = st.date_input("📅 交易日期", datetime.today())
     f_type = st.selectbox("🔄 交易類型", ["Buy", "Sell", "Cash_Div", "Stock_Div"])
-    f_symbol = st.text_input("🏷️ 股票代號 (台股請加 .TW)", value="2330.TW")
+    
+    # (原本的 f_symbol 文字輸入框已經移到表單上面了，所以這裡刪除)
+    
     f_shares = st.number_input("🔢 股數 (現金股利請填 0)", min_value=0, step=1, value=1000)
     f_price = st.number_input("💲 成交價 / 每股股息", min_value=0.0, step=0.1, value=0.0)
     f_fee = st.number_input("🏦 手續費", min_value=0.0, step=1.0, value=0.0)
@@ -47,33 +71,28 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
     submitted = st.form_submit_button("💾 寫入 Google 試算表")
     
     if submitted:
-        # 自動產生新的 ID (找出目前的最高 ID + 1)
-        new_id = int(df['id'].max()) + 1 if not df.empty else 1
-        
-        # 建立新資料的 DataFrame
-        new_data = pd.DataFrame([{
-            'id': new_id,
-            'Account': f_account,
-            'Date': f_date.strftime("%Y-%m-%d"),
-            'Type': f_type,
-            'Symbol': f_symbol.upper(),
-            'Shares': f_shares,
-            'Price': f_price,
-            'Fee': f_fee,
-            'Tax': f_tax
-        }])
-        
-        # 把新資料接在舊資料後面，並更新回 Google Sheets
-        updated_df = pd.concat([df, new_data], ignore_index=True)
-        conn.update(worksheet="工作表1", data=updated_df)
-        
-        st.sidebar.success("✅ 交易紀錄已成功寫入！")
-        st.rerun()
-
-# 如果還是沒有任何資料，提示使用者輸入
-if df.empty:
-    st.info("👋 歡迎使用！你的 Google 試算表目前是空的，請從左側邊欄新增第一筆紀錄！")
-    st.stop()
+        if not final_symbol:
+            st.sidebar.error("⚠️ 請確實輸入股票代號！")
+        else:
+            new_id = int(df['id'].max()) + 1 if not df.empty else 1
+            
+            new_data = pd.DataFrame([{
+                'id': new_id,
+                'Account': f_account,
+                'Date': f_date.strftime("%Y-%m-%d"),
+                'Type': f_type,
+                'Symbol': final_symbol.upper(), # 自動套用選單或手動輸入的代號
+                'Shares': f_shares,
+                'Price': f_price,
+                'Fee': f_fee,
+                'Tax': f_tax
+            }])
+            
+            updated_df = pd.concat([df, new_data], ignore_index=True)
+            conn.update(worksheet="工作表1", data=updated_df)
+            
+            st.sidebar.success(f"✅ 成功寫入 {final_symbol.upper()} 的交易紀錄！")
+            st.rerun()
 
 # ==========================================
 # 3. 核心運算與快取股價
