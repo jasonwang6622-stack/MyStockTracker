@@ -226,11 +226,34 @@ if p_data:
 
 st.divider()
 
-# 3. 管理交易紀錄 (保持小數點供對帳用)
+# ==========================================
+# 3. 管理交易紀錄 (總金額取整數，單價保留兩位)
+# ==========================================
 st.subheader("📜 管理交易紀錄")
 h_df = df[df['Account'] == sel_acc].copy()
-h_df['Date'] = pd.to_datetime(h_df['Date']).dt.date
+
+# 🛡️ 確保日期格式乾淨
+h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
+h_df = h_df.dropna(subset=['Date'])
 h_df = h_df.sort_values('Date', ascending=False)
+
+# --- 格式化顯示設定 ---
+# 1. 價格類：保留兩位小數 (方便精確對帳)
+for col in ['Price', 'Unit_Cost']:
+    h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
+
+# 2. 總金額類：取整數並加千分位 (符合你的需求)
+h_df['Total_Amount'] = h_df['Total_Amount'].map(lambda x: f"{int(round(float(x), 0)):,}")
+
+st.dataframe(h_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
+
+with st.form("del_f"):
+    did = st.number_input("⚠️ 刪除 ID", min_value=0, step=1)
+    if st.form_submit_button("🗑️ 刪除"):
+        if did in df['id'].values:
+            conn.update(worksheet="工作表1", data=df[df['id'] != did])
+            st.success("✅ 已刪除紀錄！")
+            st.rerun()
 
 # 格式化顯示 (管理介面保留兩位小數方便精確對帳)
 for col in ['Price', 'Total_Amount', 'Unit_Cost']:
