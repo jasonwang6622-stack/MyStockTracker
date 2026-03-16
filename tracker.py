@@ -110,8 +110,8 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
             
         calc_price = net_amount / f_shares if f_shares > 0 else 0
         unit_cost = f_total_all_in / f_shares if f_shares > 0 else 0
-
-        new_data = pd.DataFrame([{
+        
+        new_row = {
             'id': int(df['id'].max() + 1) if not df.empty else 1,
             'Account': final_account,
             'Date': f_date.strftime("%Y-%m-%d"),
@@ -123,11 +123,24 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
             'Tax': f_tax,
             'Total_Amount': round(f_total_all_in, 2),
             'Unit_Cost': round(unit_cost, 2)
-        }])
+        }
         
-        conn.update(worksheet="工作表1", data=pd.concat([df, new_data], ignore_index=True))
+        # 1. 建立新的 DataFrame 並合併
+        new_data_df = pd.DataFrame([new_row])
+        updated_df = pd.concat([df, new_data_df], ignore_index=True)
+        
+        # 2. 寫入 Google Sheets
+        conn.update(worksheet="工作表1", data=updated_df)
+        
+        # 3. 🛡️ 雙重保險：手動清除所有快取
         st.cache_data.clear()
-        st.sidebar.success("✅ 成功寫入！")
+        
+        # 4. 🚀 關鍵：讓本輪剩下的程式碼也看得到新資料
+        st.session_state["just_updated"] = True 
+        
+        st.sidebar.success(f"✅ 成功寫入！請手動重新整理網頁（F5）或稍候片刻。")
+        
+        # 5. 強制重新執行
         st.rerun()
 
 # ==========================================
