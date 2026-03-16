@@ -205,13 +205,48 @@ if selected_account in accounts_data:
                 "🚀 報酬率": f"{roi:.2f}%"
             })
 
-    # 第一層：總覽
+    # ==========================================
+    # 第一層：【投資總覽】
+    # ==========================================
     st.subheader("📊 帳戶總結資產")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("💰 總市值", f"${total_market_value:,.0f}")
-    c2.metric("🪙 總投資成本", f"${total_invested_cost:,.0f}")
-    c3.metric("📉 未實現損益", f"${total_unrealized_pnl:,.0f}", delta=f"{total_unrealized_pnl:,.0f}")
-    c4.metric("🧧 已實現損益", f"${total_realized_pnl:,.0f}")
+    
+    # --- 計算 XIRR (年化報酬率) ---
+    today = pd.to_datetime(datetime.today().date())
+    temp_cash_flows = data['cash_flows'].copy()
+    if total_market_value > 0:
+        temp_cash_flows.append((today, total_market_value))
+    
+    try:
+        # 確保有至少兩筆不同時間的現金流才能算 XIRR
+        if len(temp_cash_flows) >= 2:
+            dates = [cf[0] for cf in temp_cash_flows]
+            amounts = [cf[1] for cf in temp_cash_flows]
+            xirr_val = xirr(dates, amounts)
+            xirr_percentage = xirr_val * 100 if xirr_val else 0.0
+        else:
+            xirr_percentage = 0.0
+    except:
+        xirr_percentage = 0.0
+
+    # --- 顯示五大核心指標 ---
+    c1, c2, c3, c4, c5 = st.columns(5)
+    
+    with c1:
+        st.metric("💰 總市值", f"${total_market_value:,.0f}")
+    
+    with c2:
+        st.metric("🪙 總投資成本", f"${total_invested_cost:,.0f}")
+        
+    with c3:
+        # 顯示合計未實現損益，並用 delta 標示正負
+        st.metric("📉 未實現損益", f"${total_unrealized_pnl:,.0f}", delta=f"{total_unrealized_pnl:,.0f}")
+        
+    with c4:
+        st.metric("🧧 已實現損益", f"${total_realized_pnl:,.0f}")
+        
+    with c5:
+        # 這裡就是消失的報酬率！
+        st.metric("📊 年化報酬 (XIRR)", f"{xirr_percentage:.2f}%")
 
     st.divider()
 
