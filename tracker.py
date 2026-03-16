@@ -265,9 +265,16 @@ if selected_account in accounts_data:
 # 管理紀錄區域
 st.divider()
 st.write(f"### ⚙️ 管理交易紀錄")
-hist_df = df[df['Account'] == selected_account].sort_values('Date', ascending=False)
-st.dataframe(hist_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
 
+# 1. 篩選資料
+hist_df = df[df['Account'] == selected_account].copy()
+
+# 2. 🛡️ 關鍵修正：將 Date 轉為純日期格式（不含時間）
+hist_df['Date'] = pd.to_datetime(hist_df['Date']).dt.date
+
+# 3. 排序並顯示
+hist_df = hist_df.sort_values('Date', ascending=False)
+st.dataframe(hist_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
 with st.form("delete_form"):
     del_id = st.number_input("⚠️ 輸入要刪除的紀錄 ID", min_value=0, step=1)
     if st.form_submit_button("🗑️ 刪除紀錄"):
