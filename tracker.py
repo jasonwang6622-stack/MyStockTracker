@@ -161,9 +161,8 @@ if not df.empty:
             accounts_data[acc]['cash_flows'].append((row['Date'], total_amt))
         elif t_type == 'Stock_Div':
             inv[sym]['shares'] += shares
-
 # ==========================================
-# 6. 介面呈現 (格式化：損益取整數，價格保留兩位)
+# 6. 介面呈現 (格式化：損益/股數/總額取整數，價格保留兩位)
 # ==========================================
 acc_list = list(accounts_data.keys())
 if not acc_list: st.stop()
@@ -175,7 +174,7 @@ data = accounts_data[sel_acc]
 p_data = []
 t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
 
-# 取得該帳戶已實現損益 (從 inventory 中加總)
+# 取得該帳戶已實現損益
 t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
 
 for sym, d in data['inventory'].items():
@@ -188,15 +187,16 @@ for sym, d in data['inventory'].items():
         t_cost += d['total_cost']
         t_upnl += upnl
         p_data.append({
-            "標的": sym, "股數": int(d['shares']),
+            "標的": sym, 
+            "股數": f"{int(d['shares']):,}",           # 股數加上千分位
             "含費均價": f"{d['total_cost']/d['shares']:.2f}",
             "最新現價": f"{cur_p:.2f}",
-            "市值": f"{int(round(mv, 0)):,}",      # 取整數並加逗號
-            "損益": f"{int(round(upnl, 0)):,}",    # 取整數並加逗號
+            "市值": f"{int(round(mv, 0)):,}", 
+            "損益": f"{int(round(upnl, 0)):,}",
             "總報酬 %": f"{roi:.2f}%"
         })
 
-# 1. 投資總覽 (大指標取整數)
+# 1. 投資總覽
 st.subheader("📊 投資總覽")
 overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
 
@@ -213,7 +213,7 @@ c5.metric("📈 總報酬率", f"{overall_roi:.2f}%")
 temp_cf = data['cash_flows'].copy()
 if t_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_mv))
 try:
-    x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >=2 else 0
+    x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
 except: x_val = 0
 c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
 
@@ -226,9 +226,7 @@ if p_data:
 
 st.divider()
 
-# ==========================================
-# 3. 管理交易紀錄 (總金額取整數，單價保留兩位)
-# ==========================================
+# 3. 管理交易紀錄
 st.subheader("📜 管理交易紀錄")
 h_df = df[df['Account'] == sel_acc].copy()
 
@@ -238,12 +236,13 @@ h_df = h_df.dropna(subset=['Date'])
 h_df = h_df.sort_values('Date', ascending=False)
 
 # --- 格式化顯示設定 ---
-# 1. 價格類：保留兩位小數 (方便精確對帳)
+# 價格與均價：保留兩位小數
 for col in ['Price', 'Unit_Cost']:
     h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
 
-# 2. 總金額類：取整數並加千分位 (符合你的需求)
+# 總金額與股數：取整數並加千分位
 h_df['Total_Amount'] = h_df['Total_Amount'].map(lambda x: f"{int(round(float(x), 0)):,}")
+h_df['Shares'] = h_df['Shares'].map(lambda x: f"{int(x):,}")
 
 st.dataframe(h_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
 
@@ -253,18 +252,4 @@ with st.form("del_f"):
         if did in df['id'].values:
             conn.update(worksheet="工作表1", data=df[df['id'] != did])
             st.success("✅ 已刪除紀錄！")
-            st.rerun()
-
-# 格式化顯示 (管理介面保留兩位小數方便精確對帳)
-for col in ['Price', 'Total_Amount', 'Unit_Cost']:
-    h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
-
-st.dataframe(h_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
-
-with st.form("del_f"):
-    did = st.number_input("⚠️ 刪除 ID", min_value=0, step=1)
-    if st.form_submit_button("🗑️ 刪除"):
-        if did in df['id'].values:
-            conn.update(worksheet="工作表1", data=df[df['id'] != did])
-            st.success("已刪除！")
             st.rerun()
