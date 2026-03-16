@@ -9,8 +9,8 @@ from streamlit_gsheets import GSheetsConnection
 # ==========================================
 # 1. 網頁基本設定 & 密碼鎖
 # ==========================================
-st.set_page_config(page_title="所有人", page_icon="📈", layout="wide")
-st.title("📈 所有人")
+st.set_page_config(page_title="股票庫存追蹤系統", page_icon="📈", layout="wide")
+st.title("📈 股票庫存追蹤系統")
 
 def check_password():
     def password_entered():
