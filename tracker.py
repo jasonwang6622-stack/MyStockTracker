@@ -10,7 +10,7 @@ from streamlit_gsheets import GSheetsConnection
 # 1. 網頁基本設定 & 連線 Google Sheets
 # ==========================================
 st.set_page_config(page_title="股票庫存追蹤系統", page_icon="📈", layout="wide")
-st.title("📈 家族/個人股票追蹤系統 (Google 試算表版)")
+st.title("📈 股票追蹤系統")
 
 # 建立連線 (ttl=0 代表每次都抓取最新資料，不使用快取)
 conn = st.connection("gsheets", type=GSheetsConnection)
