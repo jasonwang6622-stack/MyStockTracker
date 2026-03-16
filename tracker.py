@@ -39,7 +39,7 @@ st.sidebar.header("✍️ 新增交易紀錄")
 if not df.empty and 'Symbol' in df.columns:
     existing_symbols = sorted(df['Symbol'].dropna().unique().tolist())
 else:
-    existing_symbols = ["2330.TW", "0050.TW"] # 如果是空表，給個預設值
+    existing_symbols = ["0050.TW"] # 如果是空表，給個預設值
     
 # 2. 在選單最後面加上一個「新增」的選項
 symbol_options = existing_symbols + ["➕ 新增其他股票..."]
