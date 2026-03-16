@@ -9,8 +9,8 @@ from streamlit_gsheets import GSheetsConnection
 # ==========================================
 # 1. 網頁基本設定 & 密碼鎖
 # ==========================================
-st.set_page_config(page_title="股票庫存追蹤系統", page_icon="📈", layout="wide")
-st.title("📈 股票庫存追蹤系統")
+st.set_page_config(page_title="股票追蹤系統", page_icon="📈", layout="wide")
+st.title("📈 股票追蹤系統")
 
 def check_password():
     def password_entered():
@@ -32,32 +32,30 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 2. 連線 Google Sheets
+# 2. 資料庫連線與記憶體快取 (核心除錯區)
 # ==========================================
 conn = st.connection("gsheets", type=GSheetsConnection)
-df = conn.read(worksheet="工作表1", ttl=0)
 
+# 💡 只有在記憶體沒資料時，才去跟 Google 要資料
+if "my_data" not in st.session_state:
+    st.session_state.my_data = conn.read(worksheet="工作表1", ttl=0)
+
+df = st.session_state.my_data
+
+# 確保基礎欄位存在
+expected_cols = ['id', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']
 if df.empty or 'id' not in df.columns:
-    df = pd.DataFrame(columns=['id', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost'])
+    df = pd.DataFrame(columns=expected_cols)
 
-# 確保資料格式正確
-df = df.dropna(subset=['id']) # 移除 ID 為空的列
-
+# 格式清洗
+df = df.dropna(subset=['id'])
 if not df.empty:
-    # 1. 強制轉換 ID 為整數
     df['id'] = df['id'].astype(int)
-    
-    # 2. 🛡️ 安全轉換日期：遇到錯誤格式先轉為 NaT (Not a Time)
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    
-    # 3. 剔除掉日期轉換失敗的無效列
-    df = df.dropna(subset=['Date'])
-    
-    # 4. 排序
-    df = df.sort_values('Date')
+    df = df.dropna(subset=['Date']).sort_values('Date')
 
 # ==========================================
-# 3. 核心功能：抓取股價 (快取 1 小時)
+# 3. 核心功能：抓取股價
 # ==========================================
 @st.cache_data(ttl=3600)
 def get_current_price(symbol):
@@ -68,31 +66,28 @@ def get_current_price(symbol):
     for s in search_list:
         try:
             history = yf.Ticker(s).history(period="2d")
-            if not history.empty:
-                return round(history['Close'].iloc[-1], 2)
-        except:
-            continue
+            if not history.empty: return round(history['Close'].iloc[-1], 2)
+        except: continue
     return 0.0
 
 # ==========================================
-# 4. 側邊欄：輸入表單 (改為總金額含規費)
+# 4. 側邊欄：新增交易紀錄表單
 # ==========================================
 st.sidebar.header("✍️ 新增交易紀錄")
 
-existing_accounts = sorted(df['Account'].dropna().unique().tolist()) if not df.empty else ["媽媽"]
+# 動態帳戶選單 (去除空白防呆)
+existing_accounts = sorted([str(x).strip() for x in df['Account'].dropna().unique()]) if not df.empty else ["媽媽"]
 acc_opt = st.sidebar.selectbox("👤 選擇帳戶", existing_accounts + ["➕ 新增..."])
-final_account = st.sidebar.text_input("新帳戶名稱") if acc_opt == "➕ 新增..." else acc_opt
+final_account = st.sidebar.text_input("✏️ 新帳戶名稱").strip() if acc_opt == "➕ 新增..." else acc_opt
 
 existing_symbols = sorted(df['Symbol'].dropna().unique().tolist()) if not df.empty else ["0050.TW"]
 sym_opt = st.sidebar.selectbox("🏷️ 股票代號", existing_symbols + ["➕ 新增..."])
-final_symbol = st.sidebar.text_input("新代號 (.TW/.TWO)") if sym_opt == "➕ 新增..." else sym_opt
+final_symbol = st.sidebar.text_input("✏️ 新代號 (.TW/.TWO)").strip().upper() if sym_opt == "➕ 新增..." else sym_opt
 
 with st.sidebar.form("transaction_form", clear_on_submit=True):
     f_date = st.date_input("📅 交易日期", datetime.today())
     f_type = st.selectbox("🔄 類型", ["Buy", "Sell", "Cash_Div", "Stock_Div"])
     f_shares = st.number_input("🔢 股數", min_value=0, step=1, value=0)
-    
-    # 核心修正：輸入的總金額已含規費
     f_total_all_in = st.number_input("💰 總金額 (已含手續費/稅)", min_value=0.0, step=1.0, value=0.0)
     f_fee = st.number_input("🏦 其中包含的手續費", min_value=0.0, step=1.0, value=0.0)
     f_tax = st.number_input("🏛️ 其中包含的交易稅", min_value=0.0, step=1.0, value=0.0)
@@ -100,7 +95,6 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
     submitted = st.form_submit_button("💾 寫入試算表")
     
     if submitted and final_account and final_symbol:
-        # 反推成交單價 (不含規費的淨單價)
         if f_type == "Buy":
             net_amount = f_total_all_in - f_fee
         elif f_type == "Sell":
@@ -110,38 +104,36 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
             
         calc_price = net_amount / f_shares if f_shares > 0 else 0
         unit_cost = f_total_all_in / f_shares if f_shares > 0 else 0
-        
-        new_row = {
+
+        new_data = pd.DataFrame([{
             'id': int(df['id'].max() + 1) if not df.empty else 1,
             'Account': final_account,
             'Date': f_date.strftime("%Y-%m-%d"),
             'Type': f_type,
-            'Symbol': final_symbol.upper(),
+            'Symbol': final_symbol,
             'Shares': f_shares,
             'Price': round(calc_price, 2),
             'Fee': f_fee,
             'Tax': f_tax,
             'Total_Amount': round(f_total_all_in, 2),
             'Unit_Cost': round(unit_cost, 2)
-        }
+        }])
         
-        # 1. 建立新的 DataFrame 並合併
-        new_data_df = pd.DataFrame([new_row])
-        updated_df = pd.concat([df, new_data_df], ignore_index=True)
+        updated_df = pd.concat([df, new_data], ignore_index=True)
         
-        # 2. 寫入 Google Sheets
+        # 1. 寫入 Google Sheets
         conn.update(worksheet="工作表1", data=updated_df)
+        # 2. ⚡ 秒速更新記憶體！
+        st.session_state.my_data = updated_df
         
-        # 3. 🛡️ 雙重保險：手動清除所有快取
-        st.cache_data.clear()
-        
-        # 4. 🚀 關鍵：讓本輪剩下的程式碼也看得到新資料
-        st.session_state["just_updated"] = True 
-        
-        st.sidebar.success(f"✅ 成功寫入！請手動重新整理網頁（F5）或稍候片刻。")
-        
-        # 5. 強制重新執行
+        st.sidebar.success("✅ 成功寫入！")
         st.rerun()
+
+# 加一個手動同步按鈕 (以防萬一你在外面改了 Google 表單)
+if st.sidebar.button("🔄 從雲端強制重新讀取"):
+    st.cache_data.clear()
+    st.session_state.my_data = conn.read(worksheet="工作表1", ttl=0)
+    st.rerun()
 
 # ==========================================
 # 5. 資料處理邏輯
@@ -149,13 +141,12 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
 accounts_data = {}
 if not df.empty:
     for _, row in df.iterrows():
-        acc = row['Account']
+        acc = str(row['Account']).strip()
         if acc not in accounts_data: accounts_data[acc] = {'inventory': {}, 'cash_flows': []}
         inv = accounts_data[acc]['inventory']
         sym, t_type, shares = row['Symbol'], row['Type'], row['Shares']
         
-        # 取得總金額
-        total_amt = row['Total_Amount'] if 'Total_Amount' in row else ((row['Shares']*row['Price'])+row['Fee'])
+        total_amt = row['Total_Amount'] if 'Total_Amount' in row and pd.notnull(row['Total_Amount']) else ((row['Shares']*row['Price'])+row['Fee'])
 
         if sym not in inv: inv[sym] = {'shares': 0, 'total_cost': 0.0, 'realized_pnl': 0.0}
 
@@ -175,11 +166,14 @@ if not df.empty:
             accounts_data[acc]['cash_flows'].append((row['Date'], total_amt))
         elif t_type == 'Stock_Div':
             inv[sym]['shares'] += shares
+
 # ==========================================
-# 6. 介面呈現 (格式化：損益/股數/總額取整數，價格保留兩位)
+# 6. 介面呈現
 # ==========================================
 acc_list = list(accounts_data.keys())
-if not acc_list: st.stop()
+if not acc_list:
+    st.info("👋 目前沒有資料，請新增第一筆紀錄！")
+    st.stop()
 
 sel_acc = st.selectbox("👤 選擇帳戶", acc_list)
 st.header(f"💼 帳戶：{sel_acc}")
@@ -188,7 +182,6 @@ data = accounts_data[sel_acc]
 p_data = []
 t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
 
-# 取得該帳戶已實現損益
 t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
 
 for sym, d in data['inventory'].items():
@@ -202,15 +195,14 @@ for sym, d in data['inventory'].items():
         t_upnl += upnl
         p_data.append({
             "標的": sym, 
-            "股數": f"{int(d['shares']):,}",           # 股數加上千分位
+            "股數": f"{int(d['shares']):,}",
             "含費均價": f"{d['total_cost']/d['shares']:.2f}",
             "最新現價": f"{cur_p:.2f}",
-            "市值": f"{int(round(mv, 0)):,}", 
+            "市值": f"{int(round(mv, 0)):,}",
             "損益": f"{int(round(upnl, 0)):,}",
             "總報酬 %": f"{roi:.2f}%"
         })
 
-# 1. 投資總覽
 st.subheader("📊 投資總覽")
 overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
 
@@ -223,7 +215,6 @@ c4, c5, c6 = st.columns(3)
 c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}")
 c5.metric("📈 總報酬率", f"{overall_roi:.2f}%")
 
-# XIRR 年化報酬
 temp_cf = data['cash_flows'].copy()
 if t_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_mv))
 try:
@@ -232,29 +223,17 @@ except: x_val = 0
 c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
 
 st.divider()
-
-# 2. 庫存明細
 st.subheader("📋 庫存明細")
-if p_data: 
-    st.dataframe(pd.DataFrame(p_data), use_container_width=True, hide_index=True)
+if p_data: st.dataframe(pd.DataFrame(p_data), use_container_width=True, hide_index=True)
 
 st.divider()
-
-# 3. 管理交易紀錄
 st.subheader("📜 管理交易紀錄")
 h_df = df[df['Account'] == sel_acc].copy()
-
-# 🛡️ 確保日期格式乾淨
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
-h_df = h_df.dropna(subset=['Date'])
-h_df = h_df.sort_values('Date', ascending=False)
+h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 
-# --- 格式化顯示設定 ---
-# 價格與均價：保留兩位小數
 for col in ['Price', 'Unit_Cost']:
     h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
-
-# 總金額與股數：取整數並加千分位
 h_df['Total_Amount'] = h_df['Total_Amount'].map(lambda x: f"{int(round(float(x), 0)):,}")
 h_df['Shares'] = h_df['Shares'].map(lambda x: f"{int(x):,}")
 
@@ -264,6 +243,10 @@ with st.form("del_f"):
     did = st.number_input("⚠️ 刪除 ID", min_value=0, step=1)
     if st.form_submit_button("🗑️ 刪除"):
         if did in df['id'].values:
-            conn.update(worksheet="工作表1", data=df[df['id'] != did])
-            st.success("✅ 已刪除紀錄！")
+            updated_df = df[df['id'] != did]
+            # 1. 寫入 Google
+            conn.update(worksheet="工作表1", data=updated_df)
+            # 2. ⚡ 秒速更新記憶體
+            st.session_state.my_data = updated_df
+            st.success("✅ 已刪除！")
             st.rerun()
