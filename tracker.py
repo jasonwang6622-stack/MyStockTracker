@@ -52,7 +52,7 @@ else:
 if not df.empty and 'Symbol' in df.columns:
     existing_symbols = sorted(df['Symbol'].dropna().unique().tolist())
 else:
-    existing_symbols = ["2330.TW", "0050.TW"]
+    existing_symbols = ["0050.TW"]
     
 symbol_options = existing_symbols + ["➕ 新增其他股票..."]
 selected_sym_option = st.sidebar.selectbox("🏷️ 選擇股票 (可輸入數字搜尋)", symbol_options)
