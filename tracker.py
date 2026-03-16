@@ -46,7 +46,7 @@ if not check_password():
 
 # 建立連線 (ttl=0 代表每次都抓取最新資料，不使用快取)
 conn = st.connection("gsheets", type=GSheetsConnection)
-df = conn.read(spreadsheet="https://docs.google.com/spreadsheets/d/1x1zFrreF7xfPqp6eyToih1ZJpUVrV_Nk9FpyCneM5AU/edit", worksheet="工作表1", ttl=0)
+df = conn.read(worksheet="工作表1", ttl=0)
 
 # 如果試算表是完全空白的，先幫它建立好欄位
 expected_columns = ['id', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax']
