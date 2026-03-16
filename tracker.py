@@ -152,7 +152,7 @@ if not df.empty:
             inv[sym]['shares'] += shares
 
 # ==========================================
-# 6. 介面呈現 (格式化小數點)
+# 6. 介面呈現 (格式化：損益取整數，價格保留兩位)
 # ==========================================
 acc_list = list(accounts_data.keys())
 if not acc_list: st.stop()
@@ -163,6 +163,9 @@ st.header(f"💼 帳戶：{sel_acc}")
 data = accounts_data[sel_acc]
 p_data = []
 t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
+
+# 取得該帳戶已實現損益 (從 inventory 中加總)
+t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
 
 for sym, d in data['inventory'].items():
     if d['shares'] > 0:
@@ -177,25 +180,25 @@ for sym, d in data['inventory'].items():
             "標的": sym, "股數": int(d['shares']),
             "含費均價": f"{d['total_cost']/d['shares']:.2f}",
             "最新現價": f"{cur_p:.2f}",
-            "市值": f"{mv:,.2f}",
-            "損益": f"{upnl:,.2f}",
+            "市值": f"{int(round(mv, 0)):,}",      # 取整數並加逗號
+            "損益": f"{int(round(upnl, 0)):,}",    # 取整數並加逗號
             "總報酬 %": f"{roi:.2f}%"
         })
-t_rpnl = data['inventory'][next(iter(data['inventory']))]['realized_pnl'] if data['inventory'] else 0 # 簡化取值
 
-# 總覽
+# 1. 投資總覽 (大指標取整數)
 st.subheader("📊 投資總覽")
 overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
 
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 總市值", f"${t_mv:,.2f}")
-c2.metric("🪙 總投資成本", f"${t_cost:,.2f}")
-c3.metric("📉 未實現損益", f"${t_upnl:,.2f}", delta=f"{t_upnl:,.2f}")
+c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}")
+c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}")
+c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", delta=f"{int(round(t_upnl, 0)):,}")
 
 c4, c5, c6 = st.columns(3)
-c4.metric("🧧 已實現損益", f"${t_rpnl:,.2f}")
+c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}")
 c5.metric("📈 總報酬率", f"{overall_roi:.2f}%")
-# XIRR
+
+# XIRR 年化報酬
 temp_cf = data['cash_flows'].copy()
 if t_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_mv))
 try:
@@ -204,22 +207,30 @@ except: x_val = 0
 c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
 
 st.divider()
+
+# 2. 庫存明細
 st.subheader("📋 庫存明細")
-if p_data: st.dataframe(pd.DataFrame(p_data), use_container_width=True, hide_index=True)
+if p_data: 
+    st.dataframe(pd.DataFrame(p_data), use_container_width=True, hide_index=True)
 
 st.divider()
+
+# 3. 管理交易紀錄 (保持小數點供對帳用)
 st.subheader("📜 管理交易紀錄")
 h_df = df[df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date']).dt.date
 h_df = h_df.sort_values('Date', ascending=False)
-# 格式化顯示
+
+# 格式化顯示 (管理介面保留兩位小數方便精確對帳)
 for col in ['Price', 'Total_Amount', 'Unit_Cost']:
-    h_df[col] = h_df[col].map(lambda x: f"{x:.2f}")
+    h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
 
 st.dataframe(h_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
 
 with st.form("del_f"):
     did = st.number_input("⚠️ 刪除 ID", min_value=0, step=1)
     if st.form_submit_button("🗑️ 刪除"):
-        conn.update(worksheet="工作表1", data=df[df['id'] != did])
-        st.rerun()
+        if did in df['id'].values:
+            conn.update(worksheet="工作表1", data=df[df['id'] != did])
+            st.success("已刪除！")
+            st.rerun()
