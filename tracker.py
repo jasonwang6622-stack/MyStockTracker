@@ -138,13 +138,24 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
 # ==========================================
 @st.cache_data(ttl=3600)
 def get_current_price(symbol):
-    try:
-        ticker = yf.Ticker(symbol)
-        history = ticker.history(period="1d")
-        if not history.empty:
-            return history['Close'].iloc[-1]
-    except Exception:
-        pass
+    # 先把代號轉成大寫並修剪掉前後空格
+    symbol = str(symbol).strip().upper()
+    
+    # 自動補強邏輯：如果使用者忘記加後綴，我們幫他試試看
+    search_list = [symbol]
+    if "." not in symbol:
+        search_list.append(f"{symbol}.TW")
+        search_list.append(f"{symbol}.TWO")
+
+    for s in search_list:
+        try:
+            ticker = yf.Ticker(s)
+            # 抓取最近兩天的資料確保一定有最新收盤價
+            history = ticker.history(period="2d")
+            if not history.empty:
+                return history['Close'].iloc[-1]
+        except Exception:
+            continue
     return 0.0
 
 accounts_data = {}
