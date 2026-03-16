@@ -186,23 +186,29 @@ if selected_account in accounts_data:
 
     for sym, inv_data in data['inventory'].items():
         shares, cost = inv_data['shares'], inv_data['total_cost']
-        total_realized_pnl += inv_data['realized_pnl']
+        realized = inv_data['realized_pnl']
+        total_realized_pnl += realized
         
         if shares > 0:
             current_price = get_current_price(sym)
             market_value = current_price * shares
             unrealized_pnl = market_value - cost if current_price > 0 else 0.0
-            roi = (unrealized_pnl / cost) * 100 if (cost > 0 and current_price > 0) else 0.0
+            
+            # 個別標的總報酬率
+            individual_total_roi = (unrealized_pnl / cost * 100) if cost > 0 else 0
             
             total_market_value += market_value
             total_unrealized_pnl += unrealized_pnl
             total_invested_cost += cost
             
             portfolio_data.append({
-                "🏷️ 股票": sym, "📦 股數": int(shares),
-                "🪙 含費均價": round(cost/shares, 2), "🔔 最新現價": current_price,
-                "💎 市值": round(market_value, 0), "📈 損益": round(unrealized_pnl, 0),
-                "🚀 報酬率": f"{roi:.2f}%"
+                "🏷️ 股票": sym, 
+                "📦 股數": int(shares),
+                "🪙 含費均價": round(cost/shares, 2), 
+                "🔔 最新現價": current_price,
+                "💎 市值": round(market_value, 0), 
+                "📈 損益": round(unrealized_pnl, 0),
+                "🚀 總報酬 %": f"{individual_total_roi:.2f}%"
             })
 
     # ==========================================
@@ -210,14 +216,16 @@ if selected_account in accounts_data:
     # ==========================================
     st.subheader("📊 帳戶總結資產")
     
-    # --- 計算 XIRR (年化報酬率) ---
+    # 計算帳戶總報酬率 (Total ROI)
+    overall_total_roi = (total_unrealized_pnl / total_invested_cost * 100) if total_invested_cost > 0 else 0
+
+    # 計算 XIRR (年化報酬率)
     today = pd.to_datetime(datetime.today().date())
     temp_cash_flows = data['cash_flows'].copy()
     if total_market_value > 0:
         temp_cash_flows.append((today, total_market_value))
     
     try:
-        # 確保有至少兩筆不同時間的現金流才能算 XIRR
         if len(temp_cash_flows) >= 2:
             dates = [cf[0] for cf in temp_cash_flows]
             amounts = [cf[1] for cf in temp_cash_flows]
@@ -228,45 +236,36 @@ if selected_account in accounts_data:
     except:
         xirr_percentage = 0.0
 
-    # --- 顯示五大核心指標 ---
-    c1, c2, c3, c4, c5 = st.columns(5)
-    
-    with c1:
-        st.metric("💰 總市值", f"${total_market_value:,.0f}")
-    
-    with c2:
-        st.metric("🪙 總投資成本", f"${total_invested_cost:,.0f}")
-        
-    with c3:
-        # 顯示合計未實現損益，並用 delta 標示正負
-        st.metric("📉 未實現損益", f"${total_unrealized_pnl:,.0f}", delta=f"{total_unrealized_pnl:,.0f}")
-        
-    with c4:
-        st.metric("🧧 已實現損益", f"${total_realized_pnl:,.0f}")
-        
-    with c5:
-        # 這裡就是消失的報酬率！
-        st.metric("📊 年化報酬 (XIRR)", f"{xirr_percentage:.2f}%")
+    # 顯示指標卡 (分兩排顯示，視覺上更舒適)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("💰 總市值", f"${total_market_value:,.0f}")
+    c2.metric("🪙 總投資成本", f"${total_invested_cost:,.0f}")
+    c3.metric("📉 未實現損益", f"${total_unrealized_pnl:,.0f}", delta=f"{total_unrealized_pnl:,.0f}")
+
+    c4, c5, c6 = st.columns(3)
+    c4.metric("🧧 已實現損益", f"${total_realized_pnl:,.0f}")
+    c5.metric("📈 總報酬率", f"{overall_total_roi:.2f}%")
+    c6.metric("📊 年化報酬 (XIRR)", f"{xirr_percentage:.2f}%")
 
     st.divider()
 
-    # 第二層：明細
-    st.subheader("📋 庫存明細")
+    # 第二層：【庫存明細】
+    st.subheader("📋 個別標的明細")
     if portfolio_data:
         st.dataframe(pd.DataFrame(portfolio_data), use_container_width=True, hide_index=True)
     
-    # 第三層：配置
+    # 第三層：【資產配置】
     if portfolio_data:
         st.divider()
         st.subheader("🥧 資產配置比例")
-        fig = px.pie(pd.DataFrame(portfolio_data), values='💎 市值', names='🏷️ 股票', hole=0.4)
+        fig = px.pie(pd.DataFrame(portfolio_data), values='💎 市值', names='🏷️ 股票', hole=0.4, 
+                     color_discrete_sequence=px.colors.qualitative.Pastel)
         st.plotly_chart(fig, use_container_width=True)
 
-# 管理紀錄區域 (顯示完整一列，包含新欄位)
+# 管理紀錄區域
 st.divider()
 st.write(f"### ⚙️ 管理交易紀錄")
 hist_df = df[df['Account'] == selected_account].sort_values('Date', ascending=False)
-# 這裡會顯示新增的總金額與每股成本
 st.dataframe(hist_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
 
 with st.form("delete_form"):
