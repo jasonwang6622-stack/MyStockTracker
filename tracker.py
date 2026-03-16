@@ -38,7 +38,7 @@ st.sidebar.header("✍️ 新增交易紀錄")
 if not df.empty and 'Account' in df.columns:
     existing_accounts = sorted(df['Account'].dropna().unique().tolist())
 else:
-    existing_accounts = ["主要帳戶"]
+    existing_accounts = ["媽媽"]
     
 account_options = existing_accounts + ["➕ 新增其他帳戶..."]
 selected_acc_option = st.sidebar.selectbox("👤 選擇帳戶", account_options)
