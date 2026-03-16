@@ -299,48 +299,7 @@ if selected_account in accounts_data:
                          color_discrete_sequence=px.colors.qualitative.Pastel)
             fig.update_layout(margin=dict(t=30, b=0, l=0, r=0))
             st.plotly_chart(fig, use_container_width=True)
-
-    # --- 顯示指標卡 (加上防呆檢查) ---
-    if portfolio_data or total_realized_pnl != 0:
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("💰 總市值", f"${total_market_value:,.0f}")
-        col2.metric("📉 未實現損益", f"${total_unrealized_pnl:,.0f}")
-        col3.metric("🧧 已實現損益", f"${total_realized_pnl:,.0f}")
-        
-        # 計算 XIRR
-        today = pd.to_datetime(datetime.today().date())
-        temp_cash_flows = cash_flows.copy()
-        if total_market_value > 0:
-            temp_cash_flows.append((today, total_market_value))
-        
-        try:
-            dates = [cf[0] for cf in temp_cash_flows]
-            amounts = [cf[1] for cf in temp_cash_flows]
-            xirr_val = xirr(dates, amounts)
-            xirr_percentage = xirr_val * 100 if xirr_val else 0.0
-        except:
-            xirr_percentage = 0.0
-        
-        col4.metric("📊 年化報酬率", f"{xirr_percentage:.2f}%")
-
-        st.divider()
-
-        # 顯示表格與圓餅圖
-        col_table, col_chart = st.columns([3, 2])
-        with col_table:
-            st.write("#### 📝 庫存明細")
-            if portfolio_data:
-                st.dataframe(pd.DataFrame(portfolio_data), use_container_width=True, hide_index=True)
-            else:
-                st.info("目前無庫存股份。")
-        with col_chart:
-            st.write("#### 🥧 資產配置")
-            if portfolio_data and total_market_value > 0:
-                fig = px.pie(pd.DataFrame(portfolio_data), values='💎 目前現值', names='🏷️ 股票代號', hole=0.4)
-                st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("⚠️ 帳戶中沒有有效的庫存資料。請檢查股票代號是否包含 .TW 或 .TWO。")
-
+            
 # ==========================================
 # 5. ⚙️ 管理與刪除交易紀錄 (更新回 Google Sheets)
 # ==========================================
