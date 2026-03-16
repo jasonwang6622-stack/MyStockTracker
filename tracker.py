@@ -126,6 +126,7 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
         }])
         
         conn.update(worksheet="工作表1", data=pd.concat([df, new_data], ignore_index=True))
+        st.cache_data.clear()
         st.sidebar.success("✅ 成功寫入！")
         st.rerun()
 
