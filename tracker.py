@@ -40,10 +40,21 @@ df = conn.read(worksheet="工作表1", ttl=0)
 if df.empty or 'id' not in df.columns:
     df = pd.DataFrame(columns=['id', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost'])
 
-df = df.dropna(subset=['id'])
+# 確保資料格式正確
+df = df.dropna(subset=['id']) # 移除 ID 為空的列
+
 if not df.empty:
+    # 1. 強制轉換 ID 為整數
     df['id'] = df['id'].astype(int)
-    df['Date'] = pd.to_datetime(df['Date'])
+    
+    # 2. 🛡️ 安全轉換日期：遇到錯誤格式先轉為 NaT (Not a Time)
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    
+    # 3. 剔除掉日期轉換失敗的無效列
+    df = df.dropna(subset=['Date'])
+    
+    # 4. 排序
+    df = df.sort_values('Date')
 
 # ==========================================
 # 3. 核心功能：抓取股價 (快取 1 小時)
