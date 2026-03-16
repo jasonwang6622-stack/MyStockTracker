@@ -69,11 +69,23 @@ def get_current_price(symbol):
             if not history.empty: return round(history['Close'].iloc[-1], 2)
         except: continue
     return 0.0
-
 # ==========================================
 # 4. 側邊欄：新增交易紀錄表單
 # ==========================================
-st.sidebar.header("✍️ 新增交易紀錄")
+st.sidebar.header("✍️ 交易與管理")
+
+# 🌟 把重新讀取按鈕放在最顯眼的最上方！
+if st.sidebar.button("🔄 從雲端強制重新讀取", use_container_width=True):
+    # 1. 刪除網頁記憶體裡的資料
+    if "my_data" in st.session_state:
+        del st.session_state["my_data"]
+    # 2. 清空股價快取
+    st.cache_data.clear()
+    # 3. 重新整理網頁，強迫它去跟 Google Sheets 要最新資料
+    st.rerun()
+
+st.sidebar.divider()
+st.sidebar.subheader("新增紀錄")
 
 # 動態帳戶選單 (去除空白防呆)
 existing_accounts = sorted([str(x).strip() for x in df['Account'].dropna().unique()]) if not df.empty else ["媽媽"]
@@ -88,7 +100,7 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
     f_date = st.date_input("📅 交易日期", datetime.today())
     f_type = st.selectbox("🔄 類型", ["Buy", "Sell", "Cash_Div", "Stock_Div"])
     f_shares = st.number_input("🔢 股數", min_value=0, step=1, value=0)
-    f_total_all_in = st.number_input("💰 總金額 (已含手續費/稅)", min_value=0.0, step=1.0, value=0.0)
+    f_total_all_in = st.number_input("💰 總金額 (已含手續費/稅)", min_value=0.0, step=100.0, value=0.0)
     f_fee = st.number_input("🏦 其中包含的手續費", min_value=0.0, step=1.0, value=0.0)
     f_tax = st.number_input("🏛️ 其中包含的交易稅", min_value=0.0, step=1.0, value=0.0)
     
@@ -123,17 +135,11 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
         
         # 1. 寫入 Google Sheets
         conn.update(worksheet="工作表1", data=updated_df)
-        # 2. ⚡ 秒速更新記憶體！
+        # 2. ⚡ 秒速更新記憶體
         st.session_state.my_data = updated_df
         
         st.sidebar.success("✅ 成功寫入！")
         st.rerun()
-
-# 加一個手動同步按鈕 (以防萬一你在外面改了 Google 表單)
-if st.sidebar.button("🔄 從雲端強制重新讀取"):
-    st.cache_data.clear()
-    st.session_state.my_data = conn.read(worksheet="工作表1", ttl=0)
-    st.rerun()
 
 # ==========================================
 # 5. 資料處理邏輯
