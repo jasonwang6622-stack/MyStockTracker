@@ -69,25 +69,23 @@ def get_current_price(symbol):
             if not history.empty: return round(history['Close'].iloc[-1], 2)
         except: continue
     return 0.0
+
 # ==========================================
 # 4. 側邊欄：新增交易紀錄表單
 # ==========================================
 st.sidebar.header("✍️ 交易與管理")
 
-# 🌟 把重新讀取按鈕放在最顯眼的最上方！
+# 手動同步按鈕
 if st.sidebar.button("🔄 從雲端強制重新讀取", use_container_width=True):
-    # 1. 刪除網頁記憶體裡的資料
     if "my_data" in st.session_state:
         del st.session_state["my_data"]
-    # 2. 清空股價快取
     st.cache_data.clear()
-    # 3. 重新整理網頁，強迫它去跟 Google Sheets 要最新資料
     st.rerun()
 
 st.sidebar.divider()
 st.sidebar.subheader("新增紀錄")
 
-# 動態帳戶選單 (去除空白防呆)
+# 動態帳戶選單
 existing_accounts = sorted([str(x).strip() for x in df['Account'].dropna().unique()]) if not df.empty else ["媽媽"]
 acc_opt = st.sidebar.selectbox("👤 選擇帳戶", existing_accounts + ["➕ 新增..."])
 final_account = st.sidebar.text_input("✏️ 新帳戶名稱").strip() if acc_opt == "➕ 新增..." else acc_opt
@@ -135,7 +133,11 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
         
         # 1. 寫入 Google Sheets
         conn.update(worksheet="工作表1", data=updated_df)
-        # 2. ⚡ 秒速更新記憶體
+        
+        # 🌟 關鍵修復：強制清除 Streamlit 的全域快取，防止重整時讀到舊資料！
+        st.cache_data.clear()
+        
+        # 3. ⚡ 秒速更新記憶體
         st.session_state.my_data = updated_df
         
         st.sidebar.success("✅ 成功寫入！")
@@ -252,7 +254,11 @@ with st.form("del_f"):
             updated_df = df[df['id'] != did]
             # 1. 寫入 Google
             conn.update(worksheet="工作表1", data=updated_df)
-            # 2. ⚡ 秒速更新記憶體
+            
+            # 🌟 關鍵修復：清除快取
+            st.cache_data.clear()
+            
+            # 3. ⚡ 秒速更新記憶體
             st.session_state.my_data = updated_df
             st.success("✅ 已刪除！")
             st.rerun()
