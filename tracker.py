@@ -174,16 +174,16 @@ if not df.empty:
             accounts_data[acc]['cash_flows'].append((row['Date'], total_amt))
         elif t_type == 'Stock_Div':
             inv[sym]['shares'] += shares
-
+            
 # ==========================================
-# 6. 介面呈現
+# 6. 介面呈現 (加入台股紅漲綠跌彩色系統)
 # ==========================================
 acc_list = list(accounts_data.keys())
 if not acc_list:
     st.info("👋 目前沒有資料，請新增第一筆紀錄！")
     st.stop()
 
-sel_acc = st.selectbox("👤 選擇帳戶", acc_list)
+sel_acc = st.selectbox("👤 選擇要查看的帳戶", acc_list)
 st.header(f"💼 帳戶：{sel_acc}")
 
 data = accounts_data[sel_acc]
@@ -195,60 +195,83 @@ t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values()
 for sym, d in data['inventory'].items():
     if d['shares'] > 0:
         cur_p = get_current_price(sym)
-        
-        # 1. 原始市值
-        raw_market_value = cur_p * d['shares']
-        
-        # 2. 🛡️ 預先扣除賣出成本 (提前認列未來的規費)
-        # 假設：交易稅 0.3% (0.003)，手續費 0.1425% (0.001425) 
-        # 如果你的券商手續費有打折 (例如 2.8折)，可以改成 0.001425 * 0.28
-        est_sell_tax = raw_market_value * 0.003
-        est_sell_fee = raw_market_value * 0.001425
-        est_sell_cost = est_sell_tax + est_sell_fee
-        
-        # 3. 真實的淨變現市值與未實現損益
-        net_market_value = raw_market_value - est_sell_cost
-        upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
-        
+        mv = cur_p * d['shares']
+        upnl = mv - d['total_cost']
         roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
-        
-        # 累加到總帳戶指標
-        t_mv += raw_market_value  # 總市值通常還是看原始市值
+        t_mv += mv
         t_cost += d['total_cost']
         t_upnl += upnl
         
+        # 💡 關鍵改變：為了讓表格可以判斷顏色與排序，這裡改存「純數字」
         p_data.append({
             "標的": sym, 
-            "股數": f"{int(d['shares']):,}",
-            "含費均價": f"{d['total_cost']/d['shares']:.2f}",
-            "最新現價": f"{cur_p:.2f}",
-            "市值": f"{int(round(raw_market_value, 0)):,}",
-            "損益": f"{int(round(upnl, 0)):,}",
-            "總報酬 %": f"{roi:.2f}%"
+            "股數": int(d['shares']),
+            "含費均價": d['total_cost']/d['shares'],
+            "最新現價": cur_p,
+            "市值": int(round(mv, 0)),
+            "損益": int(round(upnl, 0)),
+            "總報酬 %": roi
         })
 
+# ==========================================
+# 📊 第一層：投資總覽 (指標卡上色)
+# ==========================================
 st.subheader("📊 投資總覽")
 overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
 
 c1, c2, c3 = st.columns(3)
 c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}")
 c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}")
-c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", delta=f"{int(round(t_upnl, 0)):,}")
+# 加上 delta 與 delta_color="inverse" 變成紅賺綠賠
+c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", delta=f"{int(round(t_upnl, 0)):,}", delta_color="inverse")
 
 c4, c5, c6 = st.columns(3)
-c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}")
-c5.metric("📈 總報酬率", f"{overall_roi:.2f}%")
+c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_rpnl, 0)):,}", delta_color="inverse")
+c5.metric("📈 總報酬率", f"{overall_roi:.2f}%", delta=f"{overall_roi:.2f}%", delta_color="inverse")
 
 temp_cf = data['cash_flows'].copy()
 if t_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_mv))
 try:
     x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
 except: x_val = 0
-c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
+c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%", delta=f"{x_val:.2f}%", delta_color="inverse")
 
 st.divider()
+
+# ==========================================
+# 📋 第二層：庫存明細 (表格上色)
+# ==========================================
 st.subheader("📋 庫存明細")
-if p_data: st.dataframe(pd.DataFrame(p_data), use_container_width=True, hide_index=True)
+if p_data: 
+    df_portfolio = pd.DataFrame(p_data)
+
+    # 🎨 定義上色邏輯：大於0紅色，小於0綠色
+    def color_profit_loss(val):
+        if isinstance(val, (int, float)):
+            if val > 0:
+                return 'color: #ff4b4b;'  # Streamlit 預設紅
+            elif val < 0:
+                return 'color: #09ab3b;'  # Streamlit 預設綠
+        return ''
+
+    # 將顏色套用到「損益」和「總報酬 %」這兩個欄位
+    try:
+        styled_df = df_portfolio.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+    except AttributeError: # 相容舊版 Pandas
+        styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+
+    # 重新把數字格式化為帶有千分位與小數點的字串
+    styled_df = styled_df.format({
+        "股數": "{:,}",
+        "含費均價": "{:.2f}",
+        "最新現價": "{:.2f}",
+        "市值": "{:,}",
+        "損益": "{:,}",
+        "總報酬 %": "{:.2f}%"
+    })
+
+    # 顯示彩色表格
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 st.divider()
 st.subheader("📜 管理交易紀錄")
