@@ -272,8 +272,6 @@ if p_data:
 
     # 顯示彩色表格
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    # 顯示彩色表格
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # ==========================================
 # 🥧 第三層：資產配置 (圓餅圖)
