@@ -24,12 +24,15 @@ def login_system():
     try:
         users_df = conn.read(worksheet="Users", ttl=0)
         users_df = users_df.dropna(subset=['Username'])
-        users_df['Password'] = users_df['Password'].astype(str) # 確保密碼是字串
+        
+        # 🛡️ 終極解法 1：強制轉為字串，並把結尾的 .0 妖怪砍掉，再去掉多餘空白
+        users_df['Username'] = users_df['Username'].astype(str).str.strip()
+        users_df['Password'] = users_df['Password'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        
     except Exception:
         st.error("⚠️ 找不到 `Users` 分頁！請在 Google 試算表建立一個名為 `Users` 的分頁，並加上 Username, Password 兩欄。")
         st.stop()
 
-    # 建立登入與註冊兩個分頁
     tab1, tab2 = st.tabs(["🔑 登入", "📝 註冊帳號"])
 
     with tab1:
@@ -60,13 +63,15 @@ def login_system():
                 elif len(r_user) < 3 or len(r_pw) < 4:
                     st.error("⚠️ 帳號至少 3 碼，密碼至少 4 碼")
                 else:
-                    # 將新帳號寫入 Users 分頁
                     new_user_df = pd.DataFrame([{"Username": r_user, "Password": r_pw}])
                     conn.update(worksheet="Users", data=pd.concat([users_df, new_user_df], ignore_index=True))
+                    
+                    # 🛡️ 終極解法 2：註冊完立刻清空快取，確保下一秒登入抓到最新資料
+                    st.cache_data.clear() 
+                    
                     st.success("✅ 註冊成功！請切換到「登入」分頁進行登入。")
 
     return False
-
 if not login_system():
     st.stop()
 
