@@ -303,56 +303,79 @@ if p_data:
 st.divider()
 st.subheader("📜 管理交易紀錄")
 
-# 準備該帳戶的紀錄
+# 1. 準備原始資料 (⚠️ 這裡我們把之前強制轉字串的程式碼拿掉了，保留真實數字讓系統可以編輯)
 h_df = user_df[user_df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
 h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 
-# 數字格式化
-for col in ['Price', 'Unit_Cost']: 
-    h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
-h_df['Total_Amount'] = h_df['Total_Amount'].map(lambda x: f"{int(round(float(x), 0)):,}")
-h_df['Shares'] = h_df['Shares'].map(lambda x: f"{int(x):,}")
+st.write("#### 📝 詳細紀錄明細 (點擊表格欄位可直接修改，勾選最左側可刪除)")
 
-# ==========================================
-# 🌟 全新改版：打勾即刪除的互動表格
-# ==========================================
-st.write("#### 📝 詳細紀錄明細 (勾選最左側框框即可刪除)")
-
-# 1. 建立顯示用的 DataFrame，並在最左邊插入「刪除打勾」欄位
 display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
 display_df = h_df[display_cols].copy()
-display_df.insert(0, "🗑️ 刪除", False) # 預設全部為未勾選 (False)
+display_df.insert(0, "🗑️ 刪除", False)
 
-# 2. 使用 st.data_editor 產生可互動表格
+# 2. 🌟 終極互動表格：解鎖所有欄位供編輯！
 edited_df = st.data_editor(
     display_df,
     column_config={
         "🗑️ 刪除": st.column_config.CheckboxColumn("🗑️ 刪除", default=False),
-        "id": None, # 💡 設定為 None 就會把 id 欄位完美隱藏！
+        "id": None, # 隱藏 ID
+        "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
+        "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
+        "Symbol": st.column_config.TextColumn("🏷️ 代號"),
+        "Shares": st.column_config.NumberColumn("🔢 股數"),
+        "Price": st.column_config.NumberColumn("💲 單價", format="%.2f"),
+        "Total_Amount": st.column_config.NumberColumn("💰 總額"),
+        "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
     },
-    disabled=display_cols, # 鎖定其他原始資料欄位不給改，只允許操作打勾框
+    disabled=["id"], # 🔒 只有 id 是鎖定不能改的，其他全部開放編輯！
     hide_index=True,
-    use_container_width=True
+    use_container_width=True,
+    key="tx_editor" # 🔑 設定 key 來捕捉你修改了什麼
 )
 
-# 3. 抓出所有被勾選為 True 的資料的 id
+# ==========================================
+# 動作 A：處理刪除 (保持原本的邏輯)
+# ==========================================
 deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
 
-# 4. 如果有任何一筆被勾選，就自動顯示紅色的確認刪除按鈕
 if len(deleted_ids) > 0:
-    # 用 type="primary" 讓按鈕變成醒目的紅色
     if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
-        
-        # 執行刪除：在總資料庫中，保留 id「不在」刪除名單裡的資料
         updated_full_df = full_df[~full_df['id'].isin(deleted_ids)]
-        
-        # 1. 寫入 Google Sheets
         conn.update(worksheet="Database", data=updated_full_df)
-        
-        # 2. 清除快取與更新記憶體
         st.cache_data.clear()
         st.session_state.my_data = updated_full_df
-        
         st.success("✅ 已成功刪除！")
+        st.rerun()
+
+# ==========================================
+# 動作 B：處理修改 (神級新功能)
+# ==========================================
+editor_state = st.session_state.get("tx_editor", {})
+edited_rows = editor_state.get("edited_rows", {})
+
+# 過濾出「不是打勾刪除」的真正資料修改
+real_edits = {}
+for row_idx, edits in edited_rows.items():
+    meaningful_edits = {k: v for k, v in edits.items() if k != "🗑️ 刪除"}
+    if meaningful_edits:
+        real_edits[row_idx] = meaningful_edits
+
+# 如果偵測到你有改數字，就跳出儲存按鈕
+if len(real_edits) > 0:
+    st.info("✏️ 系統偵測到您修改了資料，請點擊下方按鈕儲存變更：")
+    if st.button("💾 儲存修改", type="secondary", use_container_width=True):
+        updated_full_df = full_df.copy()
+        
+        # 找出你改了哪一列的哪個欄位，把它寫進總資料庫
+        for row_idx, edits in real_edits.items():
+            record_id = display_df.iloc[row_idx]['id']
+            for col_name, new_val in edits.items():
+                updated_full_df.loc[updated_full_df['id'] == record_id, col_name] = new_val
+                
+        # 寫回 Google Sheets
+        conn.update(worksheet="Database", data=updated_full_df)
+        st.cache_data.clear()
+        st.session_state.my_data = updated_full_df
+        st.success("✅ 已成功儲存修改！")
         st.rerun()
