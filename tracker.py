@@ -302,34 +302,57 @@ if p_data:
 
 st.divider()
 st.subheader("📜 管理交易紀錄")
+
+# 準備該帳戶的紀錄
 h_df = user_df[user_df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
 h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 
-for col in ['Price', 'Unit_Cost']: h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
+# 數字格式化
+for col in ['Price', 'Unit_Cost']: 
+    h_df[col] = h_df[col].map(lambda x: f"{float(x):.2f}")
 h_df['Total_Amount'] = h_df['Total_Amount'].map(lambda x: f"{int(round(float(x), 0)):,}")
 h_df['Shares'] = h_df['Shares'].map(lambda x: f"{int(x):,}")
 
-with st.form("del_f"):
-    st.write("🗑️ **刪除指定紀錄**")
-    col_id, col_btn = st.columns([3, 1])
-    with col_id:
-        did = st.number_input("⚠️ 請參考下方表格，輸入要刪除的 ID", min_value=0, step=1)
-    with col_btn:
-        st.write(""); st.write("")
-        submit_del = st.form_submit_button("🗑️ 確認刪除")
-        
-    if submit_del:
-        # 安全機制：確保他們只能刪除「屬於自己」的紀錄 ID
-        if did in user_df['id'].values:
-            updated_full_df = full_df[full_df['id'] != did]
-            conn.update(worksheet="Database", data=updated_full_df)
-            st.cache_data.clear()
-            st.session_state.my_data = updated_full_df
-            st.success(f"✅ 已成功刪除 ID {did} 的紀錄！")
-            st.rerun()
-        else:
-            st.error("找不到此 ID，或您無權刪除他人的紀錄。")
+# ==========================================
+# 🌟 全新改版：打勾即刪除的互動表格
+# ==========================================
+st.write("#### 📝 詳細紀錄明細 (勾選最左側框框即可刪除)")
 
-st.write("#### 📝 詳細紀錄明細")
-st.dataframe(h_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
+# 1. 建立顯示用的 DataFrame，並在最左邊插入「刪除打勾」欄位
+display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
+display_df = h_df[display_cols].copy()
+display_df.insert(0, "🗑️ 刪除", False) # 預設全部為未勾選 (False)
+
+# 2. 使用 st.data_editor 產生可互動表格
+edited_df = st.data_editor(
+    display_df,
+    column_config={
+        "🗑️ 刪除": st.column_config.CheckboxColumn("🗑️ 刪除", default=False),
+        "id": None, # 💡 設定為 None 就會把 id 欄位完美隱藏！
+    },
+    disabled=display_cols, # 鎖定其他原始資料欄位不給改，只允許操作打勾框
+    hide_index=True,
+    use_container_width=True
+)
+
+# 3. 抓出所有被勾選為 True 的資料的 id
+deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
+
+# 4. 如果有任何一筆被勾選，就自動顯示紅色的確認刪除按鈕
+if len(deleted_ids) > 0:
+    # 用 type="primary" 讓按鈕變成醒目的紅色
+    if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
+        
+        # 執行刪除：在總資料庫中，保留 id「不在」刪除名單裡的資料
+        updated_full_df = full_df[~full_df['id'].isin(deleted_ids)]
+        
+        # 1. 寫入 Google Sheets
+        conn.update(worksheet="Database", data=updated_full_df)
+        
+        # 2. 清除快取與更新記憶體
+        st.cache_data.clear()
+        st.session_state.my_data = updated_full_df
+        
+        st.success("✅ 已成功刪除！")
+        st.rerun()
