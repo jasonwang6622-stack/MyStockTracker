@@ -195,18 +195,34 @@ t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values()
 for sym, d in data['inventory'].items():
     if d['shares'] > 0:
         cur_p = get_current_price(sym)
-        mv = cur_p * d['shares']
-        upnl = mv - d['total_cost']
+        
+        # 1. 原始市值
+        raw_market_value = cur_p * d['shares']
+        
+        # 2. 🛡️ 預先扣除賣出成本 (提前認列未來的規費)
+        # 假設：交易稅 0.3% (0.003)，手續費 0.1425% (0.001425) 
+        # 如果你的券商手續費有打折 (例如 2.8折)，可以改成 0.001425 * 0.28
+        est_sell_tax = raw_market_value * 0.003
+        est_sell_fee = raw_market_value * 0.001425
+        est_sell_cost = est_sell_tax + est_sell_fee
+        
+        # 3. 真實的淨變現市值與未實現損益
+        net_market_value = raw_market_value - est_sell_cost
+        upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
+        
         roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
-        t_mv += mv
+        
+        # 累加到總帳戶指標
+        t_mv += raw_market_value  # 總市值通常還是看原始市值
         t_cost += d['total_cost']
         t_upnl += upnl
+        
         p_data.append({
             "標的": sym, 
             "股數": f"{int(d['shares']):,}",
             "含費均價": f"{d['total_cost']/d['shares']:.2f}",
             "最新現價": f"{cur_p:.2f}",
-            "市值": f"{int(round(mv, 0)):,}",
+            "市值": f"{int(round(raw_market_value, 0)):,}",
             "損益": f"{int(round(upnl, 0)):,}",
             "總報酬 %": f"{roi:.2f}%"
         })
