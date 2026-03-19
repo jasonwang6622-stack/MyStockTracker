@@ -191,16 +191,15 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
 
 
 # ==========================================
-# 🌟 新增：批次匯入檔案功能
+# 🌟 新增：批次匯入檔案功能 (自動計算 Price 與 Unit_Cost)
 # ==========================================
 with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
     st.markdown("👉 **步驟 1：下載標準範本**")
-    st.caption("⚠️ `Type` 欄位請務必填寫：`Buy`, `Sell`, `Cash_Div`, 或是 `Stock_Div`")
+    st.caption("⚠️ `Type` 請填寫：`Buy`, `Sell`, `Cash_Div`, `Stock_Div`")
     
-    # 準備空範本 DataFrame
-    template_cols = ['Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount']
+    # 💡 亮點 1：範本把 Price 拿掉了，使用者少填一欄！
+    template_cols = ['Account', 'Date', 'Type', 'Symbol', 'Shares', 'Fee', 'Tax', 'Total_Amount']
     template_df = pd.DataFrame(columns=template_cols)
-    # 使用 utf-8-sig 編碼，確保台灣使用者用 Excel 打開 CSV 時中文不會變亂碼！
     csv_template = template_df.to_csv(index=False).encode('utf-8-sig') 
     
     st.download_button(
@@ -221,16 +220,29 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                 
                 # 防呆 1：檢查欄位有沒有被亂改
                 if not all(col in import_df.columns for col in template_cols):
-                    st.error("❌ 欄位錯誤！請確保使用下載的範本，且不要修改第一列的英文標題。")
+                    st.error("❌ 欄位錯誤！請確保使用剛下載的最新範本。")
                 elif import_df.empty:
                     st.warning("⚠️ 檔案裡面沒有資料喔！")
                 else:
-                    # 🛡️ 系統自動接管：幫這批資料打上目前的 Username
+                    # 綁定使用者
                     import_df['Username'] = USER
                     
                     # 確保數字格式正確 (把空值補 0)
-                    for col in ['Shares', 'Total_Amount', 'Price', 'Fee', 'Tax']:
+                    for col in ['Shares', 'Total_Amount', 'Fee', 'Tax']:
                         import_df[col] = pd.to_numeric(import_df[col], errors='coerce').fillna(0)
+                    
+                    # 💡 亮點 2：系統自動反推計算 Price (單價)
+                    def calculate_price(row):
+                        if row['Shares'] <= 0: return 0
+                        if row['Type'] == 'Buy':
+                            net_amt = row['Total_Amount'] - row['Fee']
+                        elif row['Type'] == 'Sell':
+                            net_amt = row['Total_Amount'] + row['Fee'] + row['Tax']
+                        else:
+                            net_amt = row['Total_Amount']
+                        return round(net_amt / row['Shares'], 2)
+                        
+                    import_df['Price'] = import_df.apply(calculate_price, axis=1)
                     
                     # 系統自動計算 Unit_Cost (均價)
                     import_df['Unit_Cost'] = import_df.apply(
@@ -242,16 +254,16 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                     start_id = int(full_df['id'].max() + 1) if not full_df.empty else 1
                     import_df['id'] = range(start_id, start_id + len(import_df))
                     
-                    # 整理成跟資料庫一模一樣的欄位順序
+                    # 整理成跟資料庫一模一樣的欄位順序 (這時 Price 已經被生出來了)
                     final_import_df = import_df[['id', 'Username', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']]
                     
-                    # 🚀 合併並寫入 Google Sheets
+                    # 合併並寫入 Google Sheets
                     updated_full_df = pd.concat([full_df, final_import_df], ignore_index=True)
                     conn.update(worksheet="Database", data=updated_full_df)
                     
                     st.cache_data.clear()
                     st.session_state.my_data = updated_full_df
-                    st.success(f"✅ 成功匯入 {len(import_df)} 筆紀錄！")
+                    st.success(f"✅ 成功匯入 {len(import_df)} 筆紀錄，並自動計算完單價與均價！")
                     st.rerun()
                     
             except Exception as e:
