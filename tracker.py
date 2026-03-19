@@ -272,6 +272,31 @@ if p_data:
 
     # 顯示彩色表格
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    # 顯示彩色表格
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+# ==========================================
+# 🥧 第三層：資產配置 (圓餅圖)
+# ==========================================
+if p_data:
+    st.divider()
+    st.subheader("🥧 資產配置")
+    
+    # 拿 p_data 裡的「市值」跟「標的」來畫甜甜圈圖
+    pie_df = pd.DataFrame(p_data)
+    # 過濾掉市值為 0 或負數的標的 (避免圖表報錯)
+    pie_df = pie_df[pie_df['市值'] > 0] 
+    
+    if not pie_df.empty:
+        fig = px.pie(pie_df, values='市值', names='標的', hole=0.4, 
+                     color_discrete_sequence=px.colors.qualitative.Pastel)
+        
+        # 讓股票代號跟佔比直接顯示在圖表上，比較好讀
+        fig.update_traces(textposition='inside', textinfo='percent+label') 
+        # 隱藏背景，讓它完美融入你的網頁主題 (黑底/白底都好看)
+        fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)") 
+        
+        st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 st.subheader("📜 管理交易紀錄")
