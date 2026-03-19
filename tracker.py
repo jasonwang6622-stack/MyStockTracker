@@ -146,49 +146,75 @@ existing_symbols = sorted(user_df['Symbol'].dropna().unique().tolist()) if not u
 sym_opt = st.sidebar.selectbox("🏷️ 股票代號", existing_symbols + ["➕ 新增..."])
 final_symbol = st.sidebar.text_input("✏️ 新代號 (.TW/.TWO)").strip().upper() if sym_opt == "➕ 新增..." else sym_opt
 
-with st.sidebar.form("transaction_form", clear_on_submit=True):
-    f_date = st.date_input("📅 交易日期", datetime.today())
-    f_type = st.selectbox("🔄 類型", ["Buy", "Sell", "Cash_Div", "Stock_Div"])
-    f_shares = st.number_input("🔢 股數", min_value=0, step=1, value=0)
-    f_total_all_in = st.number_input("💰 總金額 (含規費)", min_value=0.0, step=100.0, value=0.0)
-    f_fee = st.number_input("🏦 手續費", min_value=0.0, step=1.0, value=0.0)
-    f_tax = st.number_input("🏛️ 交易稅", min_value=0.0, step=1.0, value=0.0)
-    
-    submitted = st.form_submit_button("💾 寫入")
-    
-    if submitted and final_account and final_symbol:
-        if f_type == "Buy": net_amount = f_total_all_in - f_fee
-        elif f_type == "Sell": net_amount = f_total_all_in + f_fee + f_tax
-        else: net_amount = f_total_all_in
-            
-        calc_price = net_amount / f_shares if f_shares > 0 else 0
-        unit_cost = f_total_all_in / f_shares if f_shares > 0 else 0
+# ---> 上面是原本單筆新增的 st.rerun() <---
 
-        # 寫入時，打上當前使用者的 Username 標籤
-        new_row = {
-            'id': int(full_df['id'].max() + 1) if not full_df.empty else 1,
-            'Username': USER,
-            'Account': final_account,
-            'Date': f_date.strftime("%Y-%m-%d"),
-            'Type': f_type,
-            'Symbol': final_symbol,
-            'Shares': f_shares,
-            'Price': round(calc_price, 2),
-            'Fee': f_fee,
-            'Tax': f_tax,
-            'Total_Amount': round(f_total_all_in, 2),
-            'Unit_Cost': round(unit_cost, 2)
-        }
-        
-        # 💡 將新資料加進「總資料庫 (full_df)」並寫入 Google Sheets
-        updated_full_df = pd.concat([full_df, pd.DataFrame([new_row])], ignore_index=True)
-        conn.update(worksheet="Database", data=updated_full_df)
-        st.cache_data.clear()
-        st.session_state.my_data = updated_full_df
-        
-        st.sidebar.success("✅ 成功寫入！")
-        st.rerun()
-
+# ==========================================
+# 🌟 新增：批次匯入檔案功能
+# ==========================================
+with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
+    st.markdown("👉 **步驟 1：下載標準範本**")
+    st.caption("⚠️ `Type` 欄位請務必填寫：`Buy`, `Sell`, `Cash_Div`, 或是 `Stock_Div`")
+    
+    # 準備空範本 DataFrame
+    template_cols = ['Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount']
+    template_df = pd.DataFrame(columns=template_cols)
+    # 使用 utf-8-sig 編碼，確保台灣使用者用 Excel 打開 CSV 時中文不會變亂碼！
+    csv_template = template_df.to_csv(index=False).encode('utf-8-sig') 
+    
+    st.download_button(
+        label="📥 下載 CSV 範本",
+        data=csv_template,
+        file_name="import_template.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+    
+    st.markdown("👉 **步驟 2：上傳填妥的 CSV**")
+    uploaded_file = st.file_uploader("選擇檔案", type=["csv"], label_visibility="collapsed")
+    
+    if uploaded_file is not None:
+        if st.button("🚀 確認批次匯入", type="primary", use_container_width=True):
+            try:
+                import_df = pd.read_csv(uploaded_file)
+                
+                # 防呆 1：檢查欄位有沒有被亂改
+                if not all(col in import_df.columns for col in template_cols):
+                    st.error("❌ 欄位錯誤！請確保使用下載的範本，且不要修改第一列的英文標題。")
+                elif import_df.empty:
+                    st.warning("⚠️ 檔案裡面沒有資料喔！")
+                else:
+                    # 🛡️ 系統自動接管：幫這批資料打上目前的 Username
+                    import_df['Username'] = USER
+                    
+                    # 確保數字格式正確 (把空值補 0)
+                    for col in ['Shares', 'Total_Amount', 'Price', 'Fee', 'Tax']:
+                        import_df[col] = pd.to_numeric(import_df[col], errors='coerce').fillna(0)
+                    
+                    # 系統自動計算 Unit_Cost (均價)
+                    import_df['Unit_Cost'] = import_df.apply(
+                        lambda row: round(row['Total_Amount'] / row['Shares'], 2) if row['Shares'] > 0 else 0, 
+                        axis=1
+                    )
+                    
+                    # 系統自動給予連續的流水號 ID
+                    start_id = int(full_df['id'].max() + 1) if not full_df.empty else 1
+                    import_df['id'] = range(start_id, start_id + len(import_df))
+                    
+                    # 整理成跟資料庫一模一樣的欄位順序
+                    final_import_df = import_df[['id', 'Username', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']]
+                    
+                    # 🚀 合併並寫入 Google Sheets
+                    updated_full_df = pd.concat([full_df, final_import_df], ignore_index=True)
+                    conn.update(worksheet="Database", data=updated_full_df)
+                    
+                    st.cache_data.clear()
+                    st.session_state.my_data = updated_full_df
+                    st.success(f"✅ 成功匯入 {len(import_df)} 筆紀錄！")
+                    st.rerun()
+                    
+            except Exception as e:
+                st.error(f"❌ 匯入時發生錯誤：{e}")
+                
 # ==========================================
 # 5. 資料處理邏輯 (只處理該使用者的 user_df)
 # ==========================================
