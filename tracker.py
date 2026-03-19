@@ -252,6 +252,8 @@ if p_data: st.dataframe(pd.DataFrame(p_data), use_container_width=True, hide_ind
 
 st.divider()
 st.subheader("📜 管理交易紀錄")
+
+# 先整理好要顯示的資料 (這樣我們才能核對 ID，並在下方顯示)
 h_df = df[df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
 h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
@@ -261,20 +263,36 @@ for col in ['Price', 'Unit_Cost']:
 h_df['Total_Amount'] = h_df['Total_Amount'].map(lambda x: f"{int(round(float(x), 0)):,}")
 h_df['Shares'] = h_df['Shares'].map(lambda x: f"{int(x):,}")
 
-st.dataframe(h_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
-
+# ==========================================
+# 1. 刪除區塊 (移到上方)
+# ==========================================
 with st.form("del_f"):
-    did = st.number_input("⚠️ 刪除 ID", min_value=0, step=1)
-    if st.form_submit_button("🗑️ 刪除"):
+    st.write("🗑️ **刪除指定紀錄**")
+    # 用 columns 讓輸入框和按鈕排在同一列，比較節省空間
+    col_id, col_btn = st.columns([3, 1])
+    with col_id:
+        did = st.number_input("⚠️ 請參考下方表格，輸入要刪除的 ID", min_value=0, step=1)
+    with col_btn:
+        st.write("") # 往下推一點，讓按鈕跟輸入框對齊
+        st.write("")
+        submit_del = st.form_submit_button("🗑️ 確認刪除")
+        
+    if submit_del:
         if did in df['id'].values:
             updated_df = df[df['id'] != did]
             # 1. 寫入 Google
             conn.update(worksheet="工作表1", data=updated_df)
-            
-            # 🌟 關鍵修復：清除快取
+            # 2. 清除快取
             st.cache_data.clear()
-            
-            # 3. ⚡ 秒速更新記憶體
+            # 3. 秒速更新記憶體
             st.session_state.my_data = updated_df
-            st.success("✅ 已刪除！")
+            st.success(f"✅ 已成功刪除 ID {did} 的紀錄！")
             st.rerun()
+        else:
+            st.error("找不到此 ID，請確認後再輸入。")
+
+# ==========================================
+# 2. 詳細紀錄表格 (移到下方)
+# ==========================================
+st.write("#### 📝 詳細紀錄明細")
+st.dataframe(h_df[['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']], use_container_width=True, hide_index=True)
