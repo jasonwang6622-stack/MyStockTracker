@@ -104,7 +104,7 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (三神裝備 + 狙擊版)
+# 3. 核心功能：抓取股價與中文名稱 (單點狙擊終極版)
 # ==========================================
 import requests
 import urllib3
@@ -116,23 +116,15 @@ def get_tw_stock_names():
     stock_names = {}
     headers = {"User-Agent": "Mozilla/5.0"}
     
-    # 🛡️ 裝備 1：證交所 OpenAPI 抓「上市」(這招你之前成功過！)
+    # 🛡️ 裝備 1：證交所 OpenAPI 抓「上市」 (這招非常穩，996 檔直接入袋！)
     try:
         res = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", headers=headers, timeout=5, verify=False)
         if res.status_code == 200:
             for item in res.json():
                 stock_names[str(item.get('公司代號', '')).strip()] = str(item.get('公司簡稱', '')).strip()
     except: pass
-    
-    # 🛡️ 裝備 2：證交所 OpenAPI 抓「上櫃」(3374 精材的藏身之處！)
-    try:
-        res = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_O", headers=headers, timeout=5, verify=False)
-        if res.status_code == 200:
-            for item in res.json():
-                stock_names[str(item.get('公司代號', '')).strip()] = str(item.get('公司簡稱', '')).strip()
-    except: pass
 
-    # 🛡️ 裝備 3：FinMind 抓「ETF」(用來補齊 0050 等基金)
+    # 🛡️ 裝備 2：FinMind 大海撈針 (補齊 0050 等前 1000 筆 ETF)
     try:
         url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
         res = requests.get(url, timeout=5, verify=False)
@@ -153,21 +145,23 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 1. 從三神裝備的大字典中找
+    # 1. 優先從大字典中找
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
-    # 🎯 終極狙擊：如果字典真的漏掉了，直接敲「鉅亨網 (Anue)」的底層 API
-    # 這是純 JSON 資料流，完全不會被歐美的 Cookie 同意畫面卡住！
+    # 🎯 2. 單點突破：如果大字典漏掉了這檔 (例如上櫃的 3374)
+    # 直接叫 FinMind「單獨」把這家公司的名字交出來！這招絕對能避開數量限制！
     if stock_name == pure_code or stock_name == symbol:
         try:
-            url = f"https://ws.cnyes.com/webapi/api/v1/quote/quotes/TWS:{pure_code}:STOCK"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            res = requests.get(url, headers=headers, timeout=3)
+            url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&data_id={pure_code}"
+            res = requests.get(url, timeout=3, verify=False)
             if res.status_code == 200:
-                name = res.json().get('data', {}).get(f"TWS:{pure_code}:STOCK", {}).get('name', '')
-                if name: stock_name = name
+                data = res.json().get('data', [])
+                if data and len(data) > 0:
+                    name = str(data[0].get('stock_name', '')).strip()
+                    if name: stock_name = name
         except: pass
-        
+
+    # 3. 抓取實際股價
     search_list = [symbol]
     if "." not in symbol:
         search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
@@ -179,7 +173,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 最後防線：美股或真的查不到，才給 Yahoo 英文名
+                # 最後防線：美股或真的完全查不到，才給 Yahoo 英文名
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
