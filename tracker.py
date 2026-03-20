@@ -107,35 +107,36 @@ user_df = full_df[full_df['Username'] == USER].copy()
 # 3. 核心功能：抓取股價與中文名稱
 # ==========================================
 
-@st.cache_data(ttl=86400) # 快取 24 小時
+@st.cache_data(ttl=86400)
 def get_tw_stock_names():
     stock_names = {}
     
-    # 1. 去證交所抓「上市」股票中文名 (🌟 修正：網址是 .com.tw！)
+    # 🌟 絕招：偽裝成 Mac 電腦上的 Google Chrome 瀏覽器
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    # 1. 抓上市
     try:
-        res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=10)
+        res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=10)
         if res_twse.status_code == 200:
             for item in res_twse.json():
-                # 使用 .strip() 預防政府資料庫裡有偷塞空白鍵
                 code = str(item.get('Code', '')).strip()
                 name = str(item.get('Name', '')).strip()
                 if code and name:
                     stock_names[code] = name
-    except Exception as e:
-        print(f"上市資料讀取失敗: {e}") # 如果失敗，會在終端機印出原因
+    except: pass
         
-    # 2. 去櫃買中心抓「上櫃」股票中文名
+    # 2. 抓上櫃
     try:
-        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", timeout=10)
+        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=10)
         if res_tpex.status_code == 200:
             for item in res_tpex.json():
-                # 櫃買的欄位名稱通常跟上市不一樣，用 get 雙重保險
-                code = str(item.get('SecuritiesCompanyCode', item.get('Code', ''))).strip()
-                name = str(item.get('CompanyName', item.get('Name', ''))).strip()
+                code = str(item.get('SecuritiesCompanyCode', '')).strip()
+                name = str(item.get('CompanyName', '')).strip()
                 if code and name:
                     stock_names[code] = name
-    except Exception as e:
-        print(f"上櫃資料讀取失敗: {e}")
+    except: pass
         
     return stock_names
 
@@ -147,7 +148,6 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 從字典中查找中文名稱 (如果查不到，就暫時先顯示代號)
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
     search_list = [symbol]
@@ -161,7 +161,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 如果台灣政府網站真的沒這檔 (例如 AAPL 美股)，才去問 Yahoo 拿英文名
+                # 如果還是查不到中文，再退回用 Yahoo 的英文名
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
@@ -174,6 +174,8 @@ def get_stock_info(symbol):
 # 4. 側邊欄：新增交易與登出
 # ==========================================
 st.sidebar.header(f"👋 哈囉，{USER}")
+# 🌟 加入探測器：顯示抓到了幾檔股票的中文
+st.sidebar.caption(f"✅ 系統已載入 {len(tw_stock_dict)} 檔台股中文名稱")
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
