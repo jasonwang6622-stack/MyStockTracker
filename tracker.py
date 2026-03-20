@@ -364,6 +364,10 @@ t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values()
 for sym, d in data['inventory'].items():
     if d['shares'] > 0:
 
+        # 💡 改用新的函數，一次把價格跟名稱都拿回來
+        cur_p, stock_name = get_stock_info(sym) 
+        
+        mv = cur_p * d['shares']
         est_sell_cost = mv * 0.003 + mv * 0.001425
         net_market_value = mv - est_sell_cost
         upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
