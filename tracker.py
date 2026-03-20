@@ -369,7 +369,7 @@ st.divider()
 st.subheader("📋 庫存明細")
 if p_data: 
     df_portfolio = pd.DataFrame(p_data)
-    df_portfolio = df.sort_values(by="標的", ascending=True).reset_index(drop=True)
+    df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
     def color_profit_loss(val):
         if isinstance(val, (int, float)):
             if val > 0: return 'color: #ff4b4b;'
