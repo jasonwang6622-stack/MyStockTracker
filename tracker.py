@@ -103,40 +103,32 @@ if not full_df.empty:
 # 🛡️ 隱形的牆：只抓取屬於當前使用者的資料
 user_df = full_df[full_df['Username'] == USER].copy()
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (終極破甲版)
+# 3. 核心功能：抓取股價與中文名稱 (FinMind 救援版)
 # ==========================================
 import requests
 import urllib3
 
-# 🤫 關閉 Python 的「不安全連線」警告，免得後台終端機被紅字洗版
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400) # 快取 24 小時
 def get_tw_stock_names():
     stock_names = {}
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    }
     
-    # 📚 字典 1：上市所有標的 (包含 0050) - 加入 verify=False 無視憑證錯誤！
+    # 🌟 殺手鐧：改用 FinMind 開放資料庫，不擋國外雲端 IP！一次抓齊上市、上櫃與 ETF
     try:
-        res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=5, verify=False)
+        url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
+        res = requests.get(url, timeout=10, verify=False)
+        
         if res.status_code == 200:
-            for item in res.json():
-                stock_names[str(item.get('Code', '')).strip()] = str(item.get('Name', '')).strip()
-    except: pass
-    
-    # 📚 字典 2：上櫃所有標的 (包含 3374) - 加入 verify=False 無視憑證錯誤！
-    try:
-        res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=5, verify=False)
-        if res.status_code == 200:
-            for item in res.json():
-                code = str(item.get('SecuritiesCompanyCode', item.get('Code', ''))).strip()
-                name = str(item.get('CompanyName', item.get('Name', ''))).strip()
-                if code and name: 
+            data = res.json().get('data', [])
+            for item in data:
+                code = str(item.get('stock_id', '')).strip()
+                name = str(item.get('stock_name', '')).strip()
+                if code and name:
                     stock_names[code] = name
-    except: pass
-    
+    except Exception as e:
+        print(f"FinMind 資料讀取失敗: {e}")
+        
     return stock_names
 
 # 預先載入中文對照表
@@ -147,7 +139,7 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 從終極大字典中找中文名稱
+    # 從 FinMind 字典中找中文名稱
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
     search_list = [symbol]
@@ -161,7 +153,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 如果台灣字典真的沒這檔，才去問 Yahoo
+                # 如果真的查不到，才去問 Yahoo
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
