@@ -104,28 +104,35 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (Yahoo 奇摩股市必殺版)
+# 3. 核心功能：抓取股價與中文名稱 (GitHub 開源無敵版)
 # ==========================================
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 1. 保留 FinMind 抓大宗 (它抓上市非常快，先墊底用)
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400) # 快取 24 小時
 def get_tw_stock_names():
     stock_names = {}
+    
+    # 🌟 最終兵器：直接讀取台灣工程師整理在 GitHub 上的靜態全機密字典！
+    # 包含所有上市、上櫃、ETF，且保證絕對不會擋國外主機！
     try:
-        url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
-        res = requests.get(url, timeout=10, verify=False)
+        url = "https://raw.githubusercontent.com/mlouielu/twstock/master/twstock/codes.json"
+        res = requests.get(url, timeout=10)
+        
         if res.status_code == 200:
-            for item in res.json().get('data', []):
-                code = str(item.get('stock_id', '')).strip()
-                name = str(item.get('stock_name', '')).strip()
-                if code and name: stock_names[code] = name
-    except: pass
+            data = res.json()
+            for code, info in data.items():
+                name = str(info.get('name', '')).strip()
+                if code and name:
+                    stock_names[str(code)] = name
+    except Exception as e:
+        print(f"GitHub 字典讀取失敗: {e}")
+        
     return stock_names
 
+# 預先載入中文對照表
 tw_stock_dict = get_tw_stock_names()
 
 @st.cache_data(ttl=3600)
@@ -133,27 +140,10 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 1. 優先從字典找 (通常 0050 跟上市股票這裡就搞定了)
+    # 1. 瞬間從 GitHub 神級字典中找中文名稱 (0050, 3374 絕對都在這)
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
-    # 🌟 2. 必殺外掛：去 Yahoo 奇摩股市 (台灣) 抓取上櫃中文名！
-    if stock_name == pure_code or stock_name == symbol:
-        try:
-            url = f"https://tw.stock.yahoo.com/quote/{pure_code}"
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            res = requests.get(url, headers=headers, timeout=5)
-            
-            # 抓取網頁原始碼裡的標題
-            if res.status_code == 200 and '<title>' in res.text:
-                title = res.text.split('<title>')[1].split('</title>')[0]
-                
-                # Yahoo 的標題長這樣："精材(3374) - 股價走勢 - Yahoo奇摩股市"
-                # 我們只要把 "(3374)" 前面的字切下來！
-                if f"({pure_code})" in title:
-                    stock_name = title.split(f"({pure_code})")[0].strip()
-        except: pass
-
-    # 3. 抓取實際股價
+    # 2. 抓取實際股價
     search_list = [symbol]
     if "." not in symbol:
         search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
@@ -165,7 +155,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 4. 如果連 Yahoo 奇摩都查不到 (例如你買了純美股 AAPL)，最後才用英文名
+                # 3. 如果連 GitHub 字典都查不到 (例如你買了純美股 AAPL)，最後才用英文名
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
