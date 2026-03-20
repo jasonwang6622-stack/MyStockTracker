@@ -104,17 +104,17 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (終極 Google 狙擊版)
+# 3. 核心功能：抓取股價與中文名稱 (Yahoo 奇摩股市必殺版)
 # ==========================================
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# 1. 保留 FinMind 抓大宗 (它抓上市非常快，先墊底用)
 @st.cache_data(ttl=86400)
 def get_tw_stock_names():
     stock_names = {}
-    # 1. 先用 FinMind 抓大宗 (它免費版剛好卡 1000 筆上限，所以幫我們搞定上市)
     try:
         url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
         res = requests.get(url, timeout=10, verify=False)
@@ -133,27 +133,25 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 1. 先去 FinMind 字典找
+    # 1. 優先從字典找 (通常 0050 跟上市股票這裡就搞定了)
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
-    # 🌟 2. 神級外掛：如果字典找不到 (例如上櫃的 3374)，直接狙擊 Google 財經！
+    # 🌟 2. 必殺外掛：去 Yahoo 奇摩股市 (台灣) 抓取上櫃中文名！
     if stock_name == pure_code or stock_name == symbol:
-        for suffix in ["TWO", "TPE"]: # 優先查上櫃(TWO)，再查上市(TPE)
-            try:
-                # 強制要求 Google 給我們繁體中文 (hl=zh-TW) 網頁
-                url = f"https://www.google.com/finance/quote/{pure_code}:{suffix}?hl=zh-TW"
-                headers = {"User-Agent": "Mozilla/5.0"}
-                res = requests.get(url, headers=headers, timeout=3)
+        try:
+            url = f"https://tw.stock.yahoo.com/quote/{pure_code}"
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            res = requests.get(url, headers=headers, timeout=5)
+            
+            # 抓取網頁原始碼裡的標題
+            if res.status_code == 200 and '<title>' in res.text:
+                title = res.text.split('<title>')[1].split('</title>')[0]
                 
-                if res.status_code == 200 and '<title>' in res.text:
-                    title = res.text.split('<title>')[1].split('</title>')[0]
-                    
-                    # 網頁標題會長這樣："精材 (3374) 股價、新聞與歷史記錄 - Google 財經"
-                    # 我們用程式把 " (3374)" 前面的字切下來！
-                    if f"({pure_code})" in title:
-                        stock_name = title.split(f"({pure_code})")[0].strip()
-                        break # 找到了就停止搜尋
-            except: continue
+                # Yahoo 的標題長這樣："精材(3374) - 股價走勢 - Yahoo奇摩股市"
+                # 我們只要把 "(3374)" 前面的字切下來！
+                if f"({pure_code})" in title:
+                    stock_name = title.split(f"({pure_code})")[0].strip()
+        except: pass
 
     # 3. 抓取實際股價
     search_list = [symbol]
@@ -167,7 +165,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 4. 如果連 Google 都查不到 (例如你買了美股 AAPL)，最後再用 Yahoo 的英文名
+                # 4. 如果連 Yahoo 奇摩都查不到 (例如你買了純美股 AAPL)，最後才用英文名
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
