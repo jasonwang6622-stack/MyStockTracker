@@ -104,35 +104,51 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (GitHub 開源無敵版)
+# 3. 核心功能：抓取股價與中文名稱 (CSV + 鉅亨網 終極版)
 # ==========================================
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-@st.cache_data(ttl=86400) # 快取 24 小時
+@st.cache_data(ttl=86400)
 def get_tw_stock_names():
     stock_names = {}
     
-    # 🌟 最終兵器：直接讀取台灣工程師整理在 GitHub 上的靜態全機密字典！
-    # 包含所有上市、上櫃、ETF，且保證絕對不會擋國外主機！
+    # 🌟 來源 1：讀取 twstock 真實存在的 CSV 檔案 (絕對不會擋 IP)
+    urls = [
+        "https://raw.githubusercontent.com/mlouielu/twstock/master/twstock/codes/twse_equities.csv",
+        "https://raw.githubusercontent.com/mlouielu/twstock/master/twstock/codes/tpex_equities.csv"
+    ]
+    for url in urls:
+        try:
+            res = requests.get(url, timeout=5)
+            res.encoding = 'utf-8'
+            if res.status_code == 200:
+                for line in res.text.split('\n'):
+                    parts = [p.strip().replace('"', '') for p in line.split(',')]
+                    # 格式：類型, 代號, 名稱, ...
+                    if len(parts) >= 3:
+                        code = parts[1]
+                        name = parts[2]
+                        if code and name and code != "code": # 排除標題列
+                            stock_names[code] = name
+        except: pass
+
+    # 🌟 來源 2：FinMind 備用補齊 (專門抓 ETF 等)
     try:
-        url = "https://raw.githubusercontent.com/mlouielu/twstock/master/twstock/codes.json"
-        res = requests.get(url, timeout=10)
-        
+        url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
+        res = requests.get(url, timeout=5, verify=False)
         if res.status_code == 200:
-            data = res.json()
-            for code, info in data.items():
-                name = str(info.get('name', '')).strip()
-                if code and name:
-                    stock_names[str(code)] = name
-    except Exception as e:
-        print(f"GitHub 字典讀取失敗: {e}")
-        
+            for item in res.json().get('data', []):
+                code = str(item.get('stock_id', '')).strip()
+                name = str(item.get('stock_name', '')).strip()
+                if code and name and code not in stock_names:
+                    stock_names[code] = name
+    except: pass
+    
     return stock_names
 
-# 預先載入中文對照表
 tw_stock_dict = get_tw_stock_names()
 
 @st.cache_data(ttl=3600)
@@ -140,10 +156,22 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 1. 瞬間從 GitHub 神級字典中找中文名稱 (0050, 3374 絕對都在這)
+    # 先從強大的靜態字典找
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
-    # 2. 抓取實際股價
+    # 🌟 來源 3：如果還是找不到，啟動「鉅亨網」即時狙擊 (不擋國外 IP)
+    if stock_name == pure_code or stock_name == symbol:
+        try:
+            url = f"https://invest.cnyes.com/twstock/TWS/{pure_code}"
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            res = requests.get(url, headers=headers, timeout=3)
+            if res.status_code == 200 and '<title>' in res.text:
+                title = res.text.split('<title>')[1].split('</title>')[0]
+                # 鉅亨網標題格式: "精材 (3374) - 股價走勢..."
+                if f"({pure_code})" in title:
+                    stock_name = title.split(f"({pure_code})")[0].strip()
+        except: pass
+        
     search_list = [symbol]
     if "." not in symbol:
         search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
@@ -155,7 +183,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 3. 如果連 GitHub 字典都查不到 (例如你買了純美股 AAPL)，最後才用英文名
+                # 最後防線：Yahoo 英文名
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
