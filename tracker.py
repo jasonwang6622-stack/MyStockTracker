@@ -363,9 +363,7 @@ t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values()
 # 找出這段迴圈並替換：
 for sym, d in data['inventory'].items():
     if d['shares'] > 0:
-        
-        
-        mv = cur_p * d['shares']
+
         est_sell_cost = mv * 0.003 + mv * 0.001425
         net_market_value = mv - est_sell_cost
         upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
