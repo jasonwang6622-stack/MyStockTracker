@@ -363,8 +363,7 @@ t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values()
 # 找出這段迴圈並替換：
 for sym, d in data['inventory'].items():
     if d['shares'] > 0:
-        # 💡 改用新的函數，一次把價格跟名稱都拿回來
-        cur_p, stock_name = get_stock_info(sym) 
+        
         
         mv = cur_p * d['shares']
         est_sell_cost = mv * 0.003 + mv * 0.001425
