@@ -104,7 +104,7 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (CSV + 鉅亨網 終極版)
+# 3. 核心功能：抓取股價與中文名稱 (三神裝備 + 狙擊版)
 # ==========================================
 import requests
 import urllib3
@@ -114,28 +114,25 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 @st.cache_data(ttl=86400)
 def get_tw_stock_names():
     stock_names = {}
+    headers = {"User-Agent": "Mozilla/5.0"}
     
-    # 🌟 來源 1：讀取 twstock 真實存在的 CSV 檔案 (絕對不會擋 IP)
-    urls = [
-        "https://raw.githubusercontent.com/mlouielu/twstock/master/twstock/codes/twse_equities.csv",
-        "https://raw.githubusercontent.com/mlouielu/twstock/master/twstock/codes/tpex_equities.csv"
-    ]
-    for url in urls:
-        try:
-            res = requests.get(url, timeout=5)
-            res.encoding = 'utf-8'
-            if res.status_code == 200:
-                for line in res.text.split('\n'):
-                    parts = [p.strip().replace('"', '') for p in line.split(',')]
-                    # 格式：類型, 代號, 名稱, ...
-                    if len(parts) >= 3:
-                        code = parts[1]
-                        name = parts[2]
-                        if code and name and code != "code": # 排除標題列
-                            stock_names[code] = name
-        except: pass
+    # 🛡️ 裝備 1：證交所 OpenAPI 抓「上市」(這招你之前成功過！)
+    try:
+        res = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", headers=headers, timeout=5, verify=False)
+        if res.status_code == 200:
+            for item in res.json():
+                stock_names[str(item.get('公司代號', '')).strip()] = str(item.get('公司簡稱', '')).strip()
+    except: pass
+    
+    # 🛡️ 裝備 2：證交所 OpenAPI 抓「上櫃」(3374 精材的藏身之處！)
+    try:
+        res = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_O", headers=headers, timeout=5, verify=False)
+        if res.status_code == 200:
+            for item in res.json():
+                stock_names[str(item.get('公司代號', '')).strip()] = str(item.get('公司簡稱', '')).strip()
+    except: pass
 
-    # 🌟 來源 2：FinMind 備用補齊 (專門抓 ETF 等)
+    # 🛡️ 裝備 3：FinMind 抓「ETF」(用來補齊 0050 等基金)
     try:
         url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
         res = requests.get(url, timeout=5, verify=False)
@@ -156,20 +153,19 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 先從強大的靜態字典找
+    # 1. 從三神裝備的大字典中找
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
-    # 🌟 來源 3：如果還是找不到，啟動「鉅亨網」即時狙擊 (不擋國外 IP)
+    # 🎯 終極狙擊：如果字典真的漏掉了，直接敲「鉅亨網 (Anue)」的底層 API
+    # 這是純 JSON 資料流，完全不會被歐美的 Cookie 同意畫面卡住！
     if stock_name == pure_code or stock_name == symbol:
         try:
-            url = f"https://invest.cnyes.com/twstock/TWS/{pure_code}"
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            url = f"https://ws.cnyes.com/webapi/api/v1/quote/quotes/TWS:{pure_code}:STOCK"
+            headers = {"User-Agent": "Mozilla/5.0"}
             res = requests.get(url, headers=headers, timeout=3)
-            if res.status_code == 200 and '<title>' in res.text:
-                title = res.text.split('<title>')[1].split('</title>')[0]
-                # 鉅亨網標題格式: "精材 (3374) - 股價走勢..."
-                if f"({pure_code})" in title:
-                    stock_name = title.split(f"({pure_code})")[0].strip()
+            if res.status_code == 200:
+                name = res.json().get('data', {}).get(f"TWS:{pure_code}:STOCK", {}).get('name', '')
+                if name: stock_name = name
         except: pass
         
     search_list = [symbol]
@@ -183,7 +179,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 最後防線：Yahoo 英文名
+                # 最後防線：美股或真的查不到，才給 Yahoo 英文名
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
