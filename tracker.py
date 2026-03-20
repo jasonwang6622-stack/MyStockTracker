@@ -104,84 +104,23 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (單點狙擊終極版)
+# 3. 核心功能：抓取單純股價
 # ==========================================
-import requests
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-@st.cache_data(ttl=86400)
-def get_tw_stock_names():
-    stock_names = {}
-    headers = {"User-Agent": "Mozilla/5.0"}
-    
-    # 🛡️ 裝備 1：證交所 OpenAPI 抓「上市」 (這招非常穩，996 檔直接入袋！)
-    try:
-        res = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", headers=headers, timeout=5, verify=False)
-        if res.status_code == 200:
-            for item in res.json():
-                stock_names[str(item.get('公司代號', '')).strip()] = str(item.get('公司簡稱', '')).strip()
-    except: pass
-
-    # 🛡️ 裝備 2：FinMind 大海撈針 (補齊 0050 等前 1000 筆 ETF)
-    try:
-        url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo"
-        res = requests.get(url, timeout=5, verify=False)
-        if res.status_code == 200:
-            for item in res.json().get('data', []):
-                code = str(item.get('stock_id', '')).strip()
-                name = str(item.get('stock_name', '')).strip()
-                if code and name and code not in stock_names:
-                    stock_names[code] = name
-    except: pass
-    
-    return stock_names
-
-tw_stock_dict = get_tw_stock_names()
-
 @st.cache_data(ttl=3600)
 def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
-    pure_code = symbol.replace('.TW', '').replace('.TWO', '')
-    
-    # 1. 優先從大字典中找
-    stock_name = tw_stock_dict.get(pure_code, symbol)
-    
-    # 🎯 2. 單點突破：如果大字典漏掉了這檔 (例如上櫃的 3374)
-    # 直接叫 FinMind「單獨」把這家公司的名字交出來！這招絕對能避開數量限制！
-    if stock_name == pure_code or stock_name == symbol:
-        try:
-            url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&data_id={pure_code}"
-            res = requests.get(url, timeout=3, verify=False)
-            if res.status_code == 200:
-                data = res.json().get('data', [])
-                if data and len(data) > 0:
-                    name = str(data[0].get('stock_name', '')).strip()
-                    if name: stock_name = name
-        except: pass
-
-    # 3. 抓取實際股價
     search_list = [symbol]
     if "." not in symbol:
         search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
-        
     for s in search_list:
         try:
             ticker = yf.Ticker(s)
             history = ticker.history(period="2d")
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
-                
-                # 最後防線：美股或真的完全查不到，才給 Yahoo 英文名
-                if stock_name == pure_code or stock_name == symbol:
-                    stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
-                    
-                return price, stock_name
+                return price  # 💡 改回只回傳一個數字
         except: continue
-        
-    return 0.0, stock_name
-    
+    return 0.0
 # ==========================================
 # 4. 側邊欄：新增交易與登出
 # ==========================================
@@ -383,33 +322,30 @@ t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
 
 t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
 
-# 找出這段迴圈並替換：
 for sym, d in data['inventory'].items():
-    if d['shares'] > 0:
-
-        # 💡 改用新的函數，一次把價格跟名稱都拿回來
-        cur_p, stock_name = get_stock_info(sym) 
-        
-        mv = cur_p * d['shares']
-        est_sell_cost = mv * 0.003 + mv * 0.001425
-        net_market_value = mv - est_sell_cost
-        upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
-        roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
-        t_mv += mv
-        t_cost += d['total_cost']
-        t_upnl += upnl
-        
-        # 💡 在字典裡多安插一個 "名稱" 欄位
-        p_data.append({
-            "標的": sym, 
-            "名稱": stock_name,  # <--- 新增這行！
-            "股數": int(d['shares']), 
-            "含費均價": d['total_cost']/d['shares'],
-            "最新現價": cur_p, 
-            "市值": int(round(mv, 0)), 
-            "損益": int(round(upnl, 0)), 
-            "總報酬 %": roi
-        })
+            if d['shares'] > 0:
+                # 💡 這裡改回只接收價格
+                cur_p = get_stock_info(sym) 
+                
+                mv = cur_p * d['shares']
+                est_sell_cost = mv * 0.003 + mv * 0.001425
+                net_market_value = mv - est_sell_cost
+                upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
+                roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
+                t_mv += mv
+                t_cost += d['total_cost']
+                t_upnl += upnl
+                
+                # 💡 這裡把 "名稱" 欄位拿掉了
+                p_data.append({
+                    "標的": sym, 
+                    "股數": int(d['shares']), 
+                    "含費均價": d['total_cost']/d['shares'],
+                    "最新現價": cur_p, 
+                    "市值": int(round(mv, 0)), 
+                    "損益": int(round(upnl, 0)), 
+                    "總報酬 %": roi
+                })
 
 st.subheader("📊 投資總覽")
 overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
@@ -451,7 +387,8 @@ if p_data:
     pie_df = pd.DataFrame(p_data)
     pie_df = pie_df[pie_df['市值'] > 0] 
     if not pie_df.empty:
-        fig = px.pie(pie_df, values='市值', names='名稱', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+        # 💡 這裡把 names 改回 '標的'
+        fig = px.pie(pie_df, values='市值', names='標的', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
         fig.update_traces(textposition='inside', textinfo='percent+label') 
         fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)") 
         st.plotly_chart(fig, use_container_width=True)
