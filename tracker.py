@@ -103,20 +103,25 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價
+# 3. 核心功能：抓取股價與名稱
 # ==========================================
 @st.cache_data(ttl=3600)
-def get_current_price(symbol):
+def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     search_list = [symbol]
     if "." not in symbol:
         search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
     for s in search_list:
         try:
-            history = yf.Ticker(s).history(period="2d")
-            if not history.empty: return round(history['Close'].iloc[-1], 2)
+            ticker = yf.Ticker(s)
+            history = ticker.history(period="2d")
+            if not history.empty: 
+                price = round(history['Close'].iloc[-1], 2)
+                # 💡 順便向 Yahoo 財經要這檔股票的名稱，如果沒給就顯示原代號
+                name = ticker.info.get('shortName', ticker.info.get('longName', s))
+                return price, name
         except: continue
-    return 0.0
+    return 0.0, symbol # 如果抓不到，價格給 0，名稱顯示代號
 
 # ==========================================
 # 4. 側邊欄：新增交易與登出
@@ -154,7 +159,7 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
     f_fee = st.number_input("🏦 手續費", min_value=0.0, step=1.0, value=0.0)
     f_tax = st.number_input("🏛️ 交易稅", min_value=0.0, step=1.0, value=0.0)
     
-    submitted = st.form_submit_button("💾 寫入")
+    submitted = st.form_submit_button("💾 輸入")
     
     if submitted and final_account and final_symbol:
         if f_type == "Buy": net_amount = f_total_all_in - f_fee
@@ -318,9 +323,12 @@ t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
 
 t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
 
+# 找出這段迴圈並替換：
 for sym, d in data['inventory'].items():
     if d['shares'] > 0:
-        cur_p = get_current_price(sym)
+        # 💡 改用新的函數，一次把價格跟名稱都拿回來
+        cur_p, stock_name = get_stock_info(sym) 
+        
         mv = cur_p * d['shares']
         est_sell_cost = mv * 0.003 + mv * 0.001425
         net_market_value = mv - est_sell_cost
@@ -329,6 +337,18 @@ for sym, d in data['inventory'].items():
         t_mv += mv
         t_cost += d['total_cost']
         t_upnl += upnl
+        
+        # 💡 在字典裡多安插一個 "名稱" 欄位
+        p_data.append({
+            "標的": sym, 
+            "名稱": stock_name,  # <--- 新增這行！
+            "股數": int(d['shares']), 
+            "含費均價": d['total_cost']/d['shares'],
+            "最新現價": cur_p, 
+            "市值": int(round(mv, 0)), 
+            "損益": int(round(upnl, 0)), 
+            "總報酬 %": roi
+        })
         
         p_data.append({
             "標的": sym, "股數": int(d['shares']), "含費均價": d['total_cost']/d['shares'],
