@@ -5,6 +5,7 @@ import plotly.express as px
 from pyxirr import xirr
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
+import requests
 
 # ==========================================
 # 1. 網頁基本設定 & 註冊登入系統
@@ -103,25 +104,58 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與名稱
+# 3. 核心功能：抓取股價與中文名稱
 # ==========================================
+
+@st.cache_data(ttl=86400) # 快取 24 小時，每天只去政府網站抓一次清單，不佔網路資源
+def get_tw_stock_names():
+    stock_names = {}
+    # 1. 去證交所抓「上市」股票中文名
+    try:
+        res_twse = requests.get("https://openapi.twse.gov.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=5)
+        for item in res_twse.json():
+            stock_names[item['Code']] = item['Name']
+    except: pass
+        
+    # 2. 去櫃買中心抓「上櫃」股票中文名
+    try:
+        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", timeout=5)
+        for item in res_tpex.json():
+            stock_names[item['SecuritiesCompanyCode']] = item['CompanyName']
+    except: pass
+        
+    return stock_names
+
+# 預先載入中文對照表
+tw_stock_dict = get_tw_stock_names()
+
 @st.cache_data(ttl=3600)
 def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
+    
+    # 💡 魔法 1：把 .TW 或 .TWO 拔掉，剩下純數字 (例如 2330)，拿去問中文對照表
+    pure_code = symbol.replace('.TW', '').replace('.TWO', '')
+    stock_name = tw_stock_dict.get(pure_code, symbol) # 如果查不到中文，就預設顯示代號
+    
     search_list = [symbol]
     if "." not in symbol:
         search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
+        
     for s in search_list:
         try:
             ticker = yf.Ticker(s)
             history = ticker.history(period="2d")
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
-                # 💡 順便向 Yahoo 財經要這檔股票的名稱，如果沒給就顯示原代號
-                name = ticker.info.get('shortName', ticker.info.get('longName', s))
-                return price, name
+                
+                # 💡 魔法 2：如果政府網站剛好沒這檔(比如美股)，才去問 Yahoo 財經拿英文名
+                if stock_name == pure_code or stock_name == symbol:
+                    stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
+                    
+                return price, stock_name
         except: continue
-    return 0.0, symbol # 如果抓不到，價格給 0，名稱顯示代號
+        
+    return 0.0, stock_name
 
 # ==========================================
 # 4. 側邊欄：新增交易與登出
