@@ -112,77 +112,52 @@ import requests
 def get_tw_stock_names():
     stock_names = {}
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
     
-    # 📚 字典 1：上市「公司」 (補足你原本的 996 檔個股)
-    try:
-        res = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", headers=headers, timeout=5)
-        if res.status_code == 200:
-            for item in res.json():
-                stock_names[str(item.get('公司代號', '')).strip()] = str(item.get('公司簡稱', '')).strip()
-    except: pass
-
-    # 📚 字典 2：上市「所有標的」 (把 0050 等 ETF 抓回來！)
+    st.sidebar.write("🔍 **正在測試連線政府伺服器...**")
+    
+    # 測試 1：上市所有標的 (包含 0050)
     try:
         res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=5)
+        st.sidebar.write(f"上市狀態碼: {res.status_code}")
         if res.status_code == 200:
-            for item in res.json():
-                stock_names[str(item.get('Code', '')).strip()] = str(item.get('Name', '')).strip()
-    except: pass
-    
-    # 📚 字典 3：上櫃「所有標的」 (把 3374 等上櫃股與上櫃 ETF 抓回來！)
-    try:
-        res = requests.get("https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json", headers=headers, timeout=5)
-        if res.status_code == 200:
-            for item in res.json().get('aaData', []):
-                stock_names[str(item[0]).strip()] = str(item[1]).strip()
-    except: pass
-    
-    # 📚 字典 4：上櫃 OpenAPI (備用防護網)
+            try:
+                data = res.json()
+                st.sidebar.write(f"上市成功解析 JSON，共 {len(data)} 筆！")
+                for item in data:
+                    stock_names[str(item.get('Code', '')).strip()] = str(item.get('Name', '')).strip()
+            except Exception as e:
+                st.sidebar.error("上市 JSON 解析失敗！伺服器回傳的不是 JSON。")
+                st.sidebar.code(res.text[:100]) # 印出伺服器到底回傳了什麼 HTML
+        else:
+            st.sidebar.error("上市連線被拒絕！")
+    except Exception as e: 
+        st.sidebar.error(f"上市連線錯誤: {e}")
+
+    # 測試 2：上櫃所有標的 (包含 3374)
     try:
         res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=5)
+        st.sidebar.write(f"上櫃狀態碼: {res.status_code}")
         if res.status_code == 200:
-            for item in res.json():
-                code = str(item.get('SecuritiesCompanyCode', item.get('Code', ''))).strip()
-                name = str(item.get('CompanyName', item.get('Name', ''))).strip()
-                if code and name: 
-                    stock_names[code] = name
-    except: pass
+            try:
+                data = res.json()
+                st.sidebar.write(f"上櫃成功解析 JSON，共 {len(data)} 筆！")
+                for item in data:
+                    code = str(item.get('SecuritiesCompanyCode', item.get('Code', ''))).strip()
+                    name = str(item.get('CompanyName', item.get('Name', ''))).strip()
+                    if code and name: 
+                        stock_names[code] = name
+            except Exception as e:
+                st.sidebar.error("上櫃 JSON 解析失敗！伺服器回傳的不是 JSON。")
+                st.sidebar.code(res.text[:100])
+        else:
+            st.sidebar.error("上櫃連線被拒絕！")
+    except Exception as e: 
+        st.sidebar.error(f"上櫃連線錯誤: {e}")
     
-    # 移除空值並回傳
-    return {k: v for k, v in stock_names.items() if k and v}
-
-# 預先載入中文對照表
-tw_stock_dict = get_tw_stock_names()
-
-@st.cache_data(ttl=3600)
-def get_stock_info(symbol):
-    symbol = str(symbol).strip().upper()
-    pure_code = symbol.replace('.TW', '').replace('.TWO', '')
-    
-    # 從終極大字典中找中文名稱
-    stock_name = tw_stock_dict.get(pure_code, symbol)
-    
-    search_list = [symbol]
-    if "." not in symbol:
-        search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
-        
-    for s in search_list:
-        try:
-            ticker = yf.Ticker(s)
-            history = ticker.history(period="2d")
-            if not history.empty: 
-                price = round(history['Close'].iloc[-1], 2)
-                
-                # 如果台灣字典真的沒這檔 (例如買了美股 AAPL)，才去問 Yahoo
-                if stock_name == pure_code or stock_name == symbol:
-                    stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
-                    
-                return price, stock_name
-        except: continue
-        
-    return 0.0, stock_name
+    st.sidebar.write(f"✅ 最終字典收集了 {len(stock_names)} 檔")
+    return stock_names
 
 # ==========================================
 # 4. 側邊欄：新增交易與登出
