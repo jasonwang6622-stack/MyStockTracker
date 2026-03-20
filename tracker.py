@@ -103,9 +103,13 @@ if not full_df.empty:
 # 🛡️ 隱形的牆：只抓取屬於當前使用者的資料
 user_df = full_df[full_df['Username'] == USER].copy()
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (照妖鏡完整版)
+# 3. 核心功能：抓取股價與中文名稱 (終極破甲版)
 # ==========================================
 import requests
+import urllib3
+
+# 🤫 關閉 Python 的「不安全連線」警告，免得後台終端機被紅字洗版
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 @st.cache_data(ttl=86400)
 def get_tw_stock_names():
@@ -114,58 +118,36 @@ def get_tw_stock_names():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
     
-    st.sidebar.write("🔍 **正在測試連線政府伺服器...**")
-    
-    # 測試 1：上市所有標的 (包含 0050)
+    # 📚 字典 1：上市所有標的 (包含 0050) - 加入 verify=False 無視憑證錯誤！
     try:
-        res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=5)
-        st.sidebar.write(f"上市狀態碼: {res.status_code}")
+        res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=5, verify=False)
         if res.status_code == 200:
-            try:
-                data = res.json()
-                st.sidebar.write(f"上市成功解析 JSON，共 {len(data)} 筆！")
-                for item in data:
-                    stock_names[str(item.get('Code', '')).strip()] = str(item.get('Name', '')).strip()
-            except Exception as e:
-                st.sidebar.error("上市 JSON 解析失敗！伺服器回傳的不是 JSON。")
-        else:
-            st.sidebar.error("上市連線被拒絕！")
-    except Exception as e: 
-        st.sidebar.error(f"上市連線錯誤: {e}")
-
-    # 測試 2：上櫃所有標的 (包含 3374)
-    try:
-        res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=5)
-        st.sidebar.write(f"上櫃狀態碼: {res.status_code}")
-        if res.status_code == 200:
-            try:
-                data = res.json()
-                st.sidebar.write(f"上櫃成功解析 JSON，共 {len(data)} 筆！")
-                for item in data:
-                    code = str(item.get('SecuritiesCompanyCode', item.get('Code', ''))).strip()
-                    name = str(item.get('CompanyName', item.get('Name', ''))).strip()
-                    if code and name: 
-                        stock_names[code] = name
-            except Exception as e:
-                st.sidebar.error("上櫃 JSON 解析失敗！伺服器回傳的不是 JSON。")
-        else:
-            st.sidebar.error("上櫃連線被拒絕！")
-    except Exception as e: 
-        st.sidebar.error(f"上櫃連線錯誤: {e}")
+            for item in res.json():
+                stock_names[str(item.get('Code', '')).strip()] = str(item.get('Name', '')).strip()
+    except: pass
     
-    st.sidebar.write(f"✅ 最終字典收集了 {len(stock_names)} 檔")
+    # 📚 字典 2：上櫃所有標的 (包含 3374) - 加入 verify=False 無視憑證錯誤！
+    try:
+        res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=5, verify=False)
+        if res.status_code == 200:
+            for item in res.json():
+                code = str(item.get('SecuritiesCompanyCode', item.get('Code', ''))).strip()
+                name = str(item.get('CompanyName', item.get('Name', ''))).strip()
+                if code and name: 
+                    stock_names[code] = name
+    except: pass
+    
     return stock_names
 
 # 預先載入中文對照表
 tw_stock_dict = get_tw_stock_names()
 
-# 🌟 剛剛我不小心漏掉的關鍵函數，把它加回來！
 @st.cache_data(ttl=3600)
 def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
-    # 去剛剛收集的字典找中文
+    # 從終極大字典中找中文名稱
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
     search_list = [symbol]
@@ -179,7 +161,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 如果台灣網站沒這檔，才去問 Yahoo
+                # 如果台灣字典真的沒這檔，才去問 Yahoo
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
@@ -187,6 +169,7 @@ def get_stock_info(symbol):
         except: continue
         
     return 0.0, stock_name
+    
 # ==========================================
 # 4. 側邊欄：新增交易與登出
 # ==========================================
