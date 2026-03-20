@@ -439,7 +439,7 @@ if p_data:
     pie_df = pd.DataFrame(p_data)
     pie_df = pie_df[pie_df['市值'] > 0] 
     if not pie_df.empty:
-        fig = px.pie(pie_df, values='市值', names='標的', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+        fig = px.pie(pie_df, values='市值', names='名稱', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
         fig.update_traces(textposition='inside', textinfo='percent+label') 
         fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)") 
         st.plotly_chart(fig, use_container_width=True)
