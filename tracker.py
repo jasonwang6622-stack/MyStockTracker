@@ -349,11 +349,6 @@ for sym, d in data['inventory'].items():
             "損益": int(round(upnl, 0)), 
             "總報酬 %": roi
         })
-        
-        p_data.append({
-            "標的": sym, "股數": int(d['shares']), "含費均價": d['total_cost']/d['shares'],
-            "最新現價": cur_p, "市值": int(round(mv, 0)), "損益": int(round(upnl, 0)), "總報酬 %": roi
-        })
 
 st.subheader("📊 投資總覽")
 overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
