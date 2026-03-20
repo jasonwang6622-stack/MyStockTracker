@@ -104,41 +104,54 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱
+# 3. 核心功能：抓取股價與中文名稱 (終極四合一版)
 # ==========================================
+import requests
 
 @st.cache_data(ttl=86400)
 def get_tw_stock_names():
     stock_names = {}
-    
-    # 🌟 絕招：偽裝成 Mac 電腦上的 Google Chrome 瀏覽器
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # 1. 抓上市
+    # 📚 字典 1：上市「公司」 (補足你原本的 996 檔個股)
     try:
-        res_twse = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=10)
-        if res_twse.status_code == 200:
-            for item in res_twse.json():
-                code = str(item.get('Code', '')).strip()
-                name = str(item.get('Name', '')).strip()
-                if code and name:
+        res = requests.get("https://openapi.twse.com.tw/v1/opendata/t187ap03_L", headers=headers, timeout=5)
+        if res.status_code == 200:
+            for item in res.json():
+                stock_names[str(item.get('公司代號', '')).strip()] = str(item.get('公司簡稱', '')).strip()
+    except: pass
+
+    # 📚 字典 2：上市「所有標的」 (把 0050 等 ETF 抓回來！)
+    try:
+        res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", headers=headers, timeout=5)
+        if res.status_code == 200:
+            for item in res.json():
+                stock_names[str(item.get('Code', '')).strip()] = str(item.get('Name', '')).strip()
+    except: pass
+    
+    # 📚 字典 3：上櫃「所有標的」 (把 3374 等上櫃股與上櫃 ETF 抓回來！)
+    try:
+        res = requests.get("https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?l=zh-tw&o=json", headers=headers, timeout=5)
+        if res.status_code == 200:
+            for item in res.json().get('aaData', []):
+                stock_names[str(item[0]).strip()] = str(item[1]).strip()
+    except: pass
+    
+    # 📚 字典 4：上櫃 OpenAPI (備用防護網)
+    try:
+        res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=5)
+        if res.status_code == 200:
+            for item in res.json():
+                code = str(item.get('SecuritiesCompanyCode', item.get('Code', ''))).strip()
+                name = str(item.get('CompanyName', item.get('Name', ''))).strip()
+                if code and name: 
                     stock_names[code] = name
     except: pass
-        
-    # 2. 抓上櫃
-    try:
-        res_tpex = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", headers=headers, timeout=10)
-        if res_tpex.status_code == 200:
-            for item in res_tpex.json():
-                code = str(item.get('SecuritiesCompanyCode', '')).strip()
-                name = str(item.get('CompanyName', '')).strip()
-                if code and name:
-                    stock_names[code] = name
-    except: pass
-        
-    return stock_names
+    
+    # 移除空值並回傳
+    return {k: v for k, v in stock_names.items() if k and v}
 
 # 預先載入中文對照表
 tw_stock_dict = get_tw_stock_names()
@@ -148,6 +161,7 @@ def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     pure_code = symbol.replace('.TW', '').replace('.TWO', '')
     
+    # 從終極大字典中找中文名稱
     stock_name = tw_stock_dict.get(pure_code, symbol)
     
     search_list = [symbol]
@@ -161,7 +175,7 @@ def get_stock_info(symbol):
             if not history.empty: 
                 price = round(history['Close'].iloc[-1], 2)
                 
-                # 如果還是查不到中文，再退回用 Yahoo 的英文名
+                # 如果台灣字典真的沒這檔 (例如買了美股 AAPL)，才去問 Yahoo
                 if stock_name == pure_code or stock_name == symbol:
                     stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
                     
