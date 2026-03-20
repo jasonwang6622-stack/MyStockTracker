@@ -102,9 +102,8 @@ if not full_df.empty:
 
 # 🛡️ 隱形的牆：只抓取屬於當前使用者的資料
 user_df = full_df[full_df['Username'] == USER].copy()
-
 # ==========================================
-# 3. 核心功能：抓取股價與中文名稱 (終極四合一版)
+# 3. 核心功能：抓取股價與中文名稱 (照妖鏡完整版)
 # ==========================================
 import requests
 
@@ -129,7 +128,6 @@ def get_tw_stock_names():
                     stock_names[str(item.get('Code', '')).strip()] = str(item.get('Name', '')).strip()
             except Exception as e:
                 st.sidebar.error("上市 JSON 解析失敗！伺服器回傳的不是 JSON。")
-                st.sidebar.code(res.text[:100]) # 印出伺服器到底回傳了什麼 HTML
         else:
             st.sidebar.error("上市連線被拒絕！")
     except Exception as e: 
@@ -150,7 +148,6 @@ def get_tw_stock_names():
                         stock_names[code] = name
             except Exception as e:
                 st.sidebar.error("上櫃 JSON 解析失敗！伺服器回傳的不是 JSON。")
-                st.sidebar.code(res.text[:100])
         else:
             st.sidebar.error("上櫃連線被拒絕！")
     except Exception as e: 
@@ -159,6 +156,37 @@ def get_tw_stock_names():
     st.sidebar.write(f"✅ 最終字典收集了 {len(stock_names)} 檔")
     return stock_names
 
+# 預先載入中文對照表
+tw_stock_dict = get_tw_stock_names()
+
+# 🌟 剛剛我不小心漏掉的關鍵函數，把它加回來！
+@st.cache_data(ttl=3600)
+def get_stock_info(symbol):
+    symbol = str(symbol).strip().upper()
+    pure_code = symbol.replace('.TW', '').replace('.TWO', '')
+    
+    # 去剛剛收集的字典找中文
+    stock_name = tw_stock_dict.get(pure_code, symbol)
+    
+    search_list = [symbol]
+    if "." not in symbol:
+        search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
+        
+    for s in search_list:
+        try:
+            ticker = yf.Ticker(s)
+            history = ticker.history(period="2d")
+            if not history.empty: 
+                price = round(history['Close'].iloc[-1], 2)
+                
+                # 如果台灣網站沒這檔，才去問 Yahoo
+                if stock_name == pure_code or stock_name == symbol:
+                    stock_name = ticker.info.get('shortName', ticker.info.get('longName', symbol))
+                    
+                return price, stock_name
+        except: continue
+        
+    return 0.0, stock_name
 # ==========================================
 # 4. 側邊欄：新增交易與登出
 # ==========================================
