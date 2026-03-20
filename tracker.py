@@ -383,16 +383,23 @@ if p_data:
 st.divider()
 st.subheader("📜 管理交易紀錄")
 
-# 1. 準備原始資料 (⚠️ 這裡我們把之前強制轉字串的程式碼拿掉了，保留真實數字讓系統可以編輯)
+# 1. 準備原始資料
 h_df = user_df[user_df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
 h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 
-st.write("#### 📝 詳細紀錄明細 (點擊表格欄位可直接修改，勾選最左側可刪除)")
+# 💡 算出總共有幾筆資料
+record_count = len(h_df)
+
+# 將筆數顯示在標題上，並把操作提示改成小字 (caption) 讓畫面更乾淨
+st.write(f"#### 📝 詳細紀錄明細 (共 {record_count} 筆)")
+st.caption("💡 提示：點擊表格欄位可直接修改數字，勾選最左側框框即可刪除。")
 
 display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
 display_df = h_df[display_cols].copy()
 display_df.insert(0, "🗑️ 刪除", False)
+
+# ... (下方接續原本的 edited_df = st.data_editor(...) 程式碼保持不變)
 
 # 2. 🌟 終極互動表格：解鎖所有欄位供編輯！
 edited_df = st.data_editor(
