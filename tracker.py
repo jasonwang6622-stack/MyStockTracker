@@ -163,8 +163,7 @@ def get_tw_stock_names():
 # 4. 側邊欄：新增交易與登出
 # ==========================================
 st.sidebar.header(f"👋 哈囉，{USER}")
-# 🌟 加入探測器：顯示抓到了幾檔股票的中文
-st.sidebar.caption(f"✅ 系統已載入 {len(tw_stock_dict)} 檔台股中文名稱")
+
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
