@@ -358,8 +358,10 @@ for sym, d in data['inventory'].items():
                     "含費均價": d['total_cost']/d['shares'],
                     "最新現價": cur_p, 
                     "市值": int(round(mv, 0)), 
-                    "損益": int(round(upnl, 0)), 
-                    "總報酬 %": roi
+                    # 🌟 把名字改成「未實現損益」，並新增「已實現損益」！
+                    "未實現損益": int(round(upnl, 0)), 
+                    "已實現損益": int(round(d['realized_pnl'], 0)), 
+                    "未實現報酬 %": roi
                 })
 
 st.subheader("📊 投資總覽")
@@ -399,7 +401,7 @@ def color_profit_loss(val):
 tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 
 # ==========================================
-# 📂 分頁 1：現有庫存
+# 📂 分頁 1：現有庫存 (顯示未實現 + 已實現)
 # ==========================================
 with tab1:
     if p_data: 
@@ -407,15 +409,24 @@ with tab1:
         df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
 
         try: 
-            styled_df = df_portfolio.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+            # 🌟 把新名字都加進紅綠上色名單
+            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '未實現報酬 %'])
         except AttributeError: 
-            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '未實現報酬 %'])
 
-        styled_df = styled_df.format({"股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", "市值": "{:,}", "損益": "{:,}", "總報酬 %": "{:.2f}%"})
+        # 🌟 更新格式化欄位
+        styled_df = styled_df.format({
+            "股數": "{:,}", 
+            "含費均價": "{:.2f}", 
+            "最新現價": "{:.2f}", 
+            "市值": "{:,}", 
+            "未實現損益": "{:,}", 
+            "已實現損益": "{:,}", 
+            "未實現報酬 %": "{:.2f}%"
+        })
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.info("目前沒有現有庫存資料喔！")
-
 # ==========================================
 # 📂 分頁 2：已出清的歷史戰績 (新增股利欄位)
 # ==========================================
