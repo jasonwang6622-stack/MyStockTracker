@@ -399,7 +399,7 @@ with tab1:
         st.info("目前沒有現有庫存資料喔！")
 
 # ==========================================
-# 📂 分頁 2：已出清的歷史戰績 (修復版)
+# 📂 分頁 2：已出清的歷史戰績 (新增股利欄位)
 # ==========================================
 with tab2:
     cleared_data = []
@@ -407,14 +407,14 @@ with tab2:
     # 尋找已經賣光 (股數為 0) 的股票
     for sym, d in data['inventory'].items():
         if d['shares'] == 0:
-            # 🌟 修正點：改用最上游的原始總表 (user_df)，並且鎖定目前的帳戶 (sel_acc)
+            # 改用最上游的原始總表 (user_df)，並且鎖定目前的帳戶 (sel_acc)
             sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
             
-            # 安全地轉換金額並加總 (使用 pd.to_numeric 避免文字或空白造成的錯誤)
+            # 安全地轉換金額並加總
             total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
             total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
             
-            # 如果有紀錄現金股利，也把它加進獲利裡
+            # 抓取現金股利
             total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
             
             # 結算損益：總收入(賣出+股利) - 總成本(買進)
@@ -423,10 +423,12 @@ with tab2:
             # 結算報酬率
             roi = (realized_pnl / total_buy * 100) if total_buy > 0 else 0.0
             
+            # 🌟 這裡新增了「股利」欄位！
             cleared_data.append({
                 "標的": sym,
                 "總買進成本": int(total_buy),
                 "總賣出收入": int(total_sell),
+                "股利": int(total_div), 
                 "損益": int(round(realized_pnl, 0)),
                 "總報酬 %": roi
             })
@@ -441,9 +443,11 @@ with tab2:
         except AttributeError: 
             styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
             
+        # 🌟 這裡也幫「股利」加上了千分位逗號的格式！
         styled_cleared = styled_cleared.format({
             "總買進成本": "{:,}", 
             "總賣出收入": "{:,}", 
+            "股利": "{:,}",
             "損益": "{:,}", 
             "總報酬 %": "{:.2f}%"
         })
