@@ -323,7 +323,10 @@ t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
 t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
 
 for sym, d in data['inventory'].items():
-            if d['shares'] > 0:
+            # 🌟 修復 1：加入四捨五入，避免 0.000001 這種小數點幽靈
+            current_shares = round(d['shares'], 2)
+            
+            if current_shares > 0:
                 # 💡 這裡改回只接收價格
                 cur_p = get_stock_info(sym) 
                 
@@ -406,7 +409,10 @@ with tab2:
     
     # 尋找已經賣光 (股數為 0) 的股票
     for sym, d in data['inventory'].items():
-        if d['shares'] == 0:
+        # 🌟 修復 2：把 == 0 改成 <= 0，把跌入負數黑洞的股票也抓出來！
+        current_shares = round(d['shares'], 2)
+        
+        if current_shares <= 0:
             # 改用最上游的原始總表 (user_df)，並且鎖定目前的帳戶 (sel_acc)
             sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
             
