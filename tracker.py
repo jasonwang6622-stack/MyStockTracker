@@ -451,12 +451,15 @@ with tab2:
     else:
         st.info("目前還沒有已出清的標的紀錄。")
             
-st.divider()
-st.subheader("🥧 資產配置")
+# ==========================================
+# 🥧 第三層：資產配置 (圓餅圖)
+# ==========================================
+if p_data:
+    st.divider()
+    st.subheader("🥧 資產配置")
     pie_df = pd.DataFrame(p_data)
     pie_df = pie_df[pie_df['市值'] > 0] 
     if not pie_df.empty:
-        # 💡 這裡把 names 改回 '標的'
         fig = px.pie(pie_df, values='市值', names='標的', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
         fig.update_traces(textposition='inside', textinfo='percent+label') 
         fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)") 
