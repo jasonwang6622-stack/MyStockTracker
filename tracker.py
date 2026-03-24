@@ -451,14 +451,6 @@ with tab2:
     else:
         st.info("目前還沒有已出清的標的紀錄。")
             
-    if cleared_data:
-        df_cleared = pd.DataFrame(cleared_data)
-        # 一樣幫它照 0~9 乖乖排序
-        df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
-        st.dataframe(df_cleared, use_container_width=True, hide_index=True)
-    else:
-        st.info("目前還沒有已出清的標的紀錄。")
-if p_data:
     st.divider()
     st.subheader("🥧 資產配置")
     pie_df = pd.DataFrame(p_data)
