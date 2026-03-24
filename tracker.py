@@ -399,7 +399,7 @@ with tab1:
         st.info("目前沒有現有庫存資料喔！")
 
 # ==========================================
-# 📂 分頁 2：已出清的歷史戰績
+# 📂 分頁 2：已出清的歷史戰績 (修復版)
 # ==========================================
 with tab2:
     cleared_data = []
@@ -407,15 +407,15 @@ with tab2:
     # 尋找已經賣光 (股數為 0) 的股票
     for sym, d in data['inventory'].items():
         if d['shares'] == 0:
-            # 從你的交易紀錄 (h_df) 中抓出這檔股票的所有買賣紀錄
-            sym_df = h_df[h_df['Symbol'] == sym]
+            # 🌟 修正點：改用最上游的原始總表 (user_df)，並且鎖定目前的帳戶 (sel_acc)
+            sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
             
-            # 分別加總買進與賣出的總額 (確保轉為 float 避免型態錯誤)
-            total_buy = sym_df[sym_df['Type'] == 'Buy']['Total_Amount'].astype(float).sum()
-            total_sell = sym_df[sym_df['Type'] == 'Sell']['Total_Amount'].astype(float).sum()
+            # 安全地轉換金額並加總 (使用 pd.to_numeric 避免文字或空白造成的錯誤)
+            total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
+            total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
             
-            # 如果你有紀錄現金股利，也把它加進獲利裡
-            total_div = sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'].astype(float).sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
+            # 如果有紀錄現金股利，也把它加進獲利裡
+            total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
             
             # 結算損益：總收入(賣出+股利) - 總成本(買進)
             realized_pnl = (total_sell + total_div) - total_buy
