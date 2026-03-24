@@ -366,22 +366,60 @@ except: x_val = 0
 c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%", delta=f"{x_val:.2f}%", delta_color="inverse")
 
 st.divider()
-st.subheader("📋 庫存明細")
-if p_data: 
-    df_portfolio = pd.DataFrame(p_data)
-    df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
-    def color_profit_loss(val):
-        if isinstance(val, (int, float)):
-            if val > 0: return 'color: #ff4b4b;'
-            elif val < 0: return 'color: #09ab3b;'
-        return ''
+st.subheader("📋 庫存與歷史明細")
 
-    try: styled_df = df_portfolio.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
-    except AttributeError: styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+# 🌟 建立兩個分頁按鈕 (你可以隨意更改裡面的文字)
+tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 
-    styled_df = styled_df.format({"股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", "市值": "{:,}", "損益": "{:,}", "總報酬 %": "{:.2f}%"})
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+# ==========================================
+# 📂 分頁 1：現有庫存 (把你原本的程式碼縮排搬進來)
+# ==========================================
+with tab1:
+    if p_data: 
+        df_portfolio = pd.DataFrame(p_data)
+        # 這裡是你剛剛成功排序的程式碼
+        df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
+        
+        def color_profit_loss(val):
+            if isinstance(val, (int, float)):
+                if val > 0: return 'color: #ff4b4b;'
+                elif val < 0: return 'color: #09ab3b;'
+            return ''
 
+        try: styled_df = df_portfolio.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+        except AttributeError: styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+
+        styled_df = styled_df.format({"股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", "市值": "{:,}", "損益": "{:,}", "總報酬 %": "{:.2f}%"})
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        
+        # 💡 小提醒：如果你希望「圓餅圖」也只在看現有庫存時出現，
+        # 可以把你原本畫圓餅圖的程式碼，也「縮排」放進這個 with tab1 裡面喔！
+    else:
+        st.info("目前沒有現有庫存資料喔！")
+
+# ==========================================
+# 📂 分頁 2：已出清的歷史明細
+# ==========================================
+with tab2:
+    cleared_data = []
+    
+    # 從你的大算盤(inventory)裡面，挑出股數剛好等於 0 的標的
+    for sym, d in data['inventory'].items():
+        if d['shares'] == 0:
+            cleared_data.append({
+                "標的": sym,
+                "狀態": "✅ 已全數出清"
+                # 💡 如果你當初在計算 inventory 時，有算出「已實現損益」，
+                # 也可以在這裡加上去！例如："已實現損益": d['realized_pnl']
+            })
+            
+    if cleared_data:
+        df_cleared = pd.DataFrame(cleared_data)
+        # 一樣幫它照 0~9 乖乖排序
+        df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
+        st.dataframe(df_cleared, use_container_width=True, hide_index=True)
+    else:
+        st.info("目前還沒有已出清的標的紀錄。")
 if p_data:
     st.divider()
     st.subheader("🥧 資產配置")
