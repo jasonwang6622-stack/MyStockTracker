@@ -274,9 +274,11 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                 st.error(f"❌ 匯入時發生錯誤：{e}")
                 
 # ==========================================
-# 5. 資料處理邏輯 (只處理該使用者的 user_df)
+# 5. 資料處理邏輯 (新增今年以來的計算)
 # ==========================================
 accounts_data = {}
+current_year = datetime.today().year # 🌟 抓取今年的年份
+
 if not user_df.empty:
     for _, row in user_df.iterrows():
         acc = str(row['Account']).strip()
@@ -286,7 +288,10 @@ if not user_df.empty:
         
         total_amt = row['Total_Amount'] if 'Total_Amount' in row and pd.notnull(row['Total_Amount']) else ((row['Shares']*row['Price'])+row['Fee'])
 
-        if sym not in inv: inv[sym] = {'shares': 0, 'total_cost': 0.0, 'realized_pnl': 0.0}
+        # 💡 字典裡多加一個 'ytd_rpnl' 用來單獨存「今年的獲利」
+        if sym not in inv: inv[sym] = {'shares': 0, 'total_cost': 0.0, 'realized_pnl': 0.0, 'ytd_rpnl': 0.0}
+
+        is_this_year = (row['Date'].year == current_year) # 判斷這筆交易是不是今年的
 
         if t_type == 'Buy':
             inv[sym]['shares'] += shares
@@ -295,16 +300,20 @@ if not user_df.empty:
         elif t_type == 'Sell':
             if inv[sym]['shares'] > 0:
                 avg_cost = inv[sym]['total_cost'] / inv[sym]['shares']
-                inv[sym]['realized_pnl'] += (total_amt - (avg_cost * shares))
+                trade_pnl = total_amt - (avg_cost * shares)
+                
+                inv[sym]['realized_pnl'] += trade_pnl
+                if is_this_year: inv[sym]['ytd_rpnl'] += trade_pnl # 🌟 如果是今年賣的，記一筆！
+                
                 inv[sym]['total_cost'] -= (avg_cost * shares)
                 inv[sym]['shares'] -= shares
                 accounts_data[acc]['cash_flows'].append((row['Date'], total_amt))
         elif t_type == 'Cash_Div':
             inv[sym]['realized_pnl'] += total_amt
+            if is_this_year: inv[sym]['ytd_rpnl'] += total_amt # 🌟 如果是今年領的股利，記一筆！
             accounts_data[acc]['cash_flows'].append((row['Date'], total_amt))
         elif t_type == 'Stock_Div':
             inv[sym]['shares'] += shares
-
 # ==========================================
 # 6. 介面呈現 
 # ==========================================
@@ -320,14 +329,18 @@ data = accounts_data[sel_acc]
 p_data = []
 t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
 
+# 取得原本的總結算
 t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
 
+# 🌟 取得「今年」的已實現損益總結算
+t_ytd_rpnl = sum(inv_item['ytd_rpnl'] for inv_item in data['inventory'].values())
+
+# 🌟 計算「今年淨投入本金」(今年買進花掉的錢 - 今年賣出拿回的錢)
+ytd_net_invest = sum(-cf[1] for cf in data['cash_flows'] if cf[0].year == current_year)
+
 for sym, d in data['inventory'].items():
-            # 🌟 修復 1：加入四捨五入，避免 0.000001 這種小數點幽靈
             current_shares = round(d['shares'], 2)
-            
             if current_shares > 0:
-                # 💡 這裡改回只接收價格
                 cur_p = get_stock_info(sym) 
                 
                 mv = cur_p * d['shares']
@@ -339,7 +352,6 @@ for sym, d in data['inventory'].items():
                 t_cost += d['total_cost']
                 t_upnl += upnl
                 
-                # 💡 這裡把 "名稱" 欄位拿掉了
                 p_data.append({
                     "標的": sym, 
                     "股數": int(d['shares']), 
@@ -353,20 +365,23 @@ for sym, d in data['inventory'].items():
 st.subheader("📊 投資總覽")
 overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
 
+# 💡 乾淨俐落的版面配置：加上 help 提示泡泡，滑鼠移過去會說明下方數字的意義
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}")
-c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}")
-c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", delta=f"{int(round(t_upnl, 0)):,}", delta_color="inverse")
+c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}") 
+# delta_color="off" 變成灰色，因為多投入本金算是中性指標，不是獲利或虧損
+c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}", delta=f"{int(round(ytd_net_invest, 0)):,}", delta_color="off", help="下方數字為『今年以來淨投入』本金")
+c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", help="歷史回溯耗效能，故此處顯示為總未實現損益") 
 
 c4, c5, c6 = st.columns(3)
-c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_rpnl, 0)):,}", delta_color="inverse")
-c5.metric("📈 總報酬率", f"{overall_roi:.2f}%", delta=f"{overall_roi:.2f}%", delta_color="inverse")
+# delta_color="inverse" 套用台股紅綠邏輯，賺錢顯示紅色
+c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_ytd_rpnl, 0)):,}", delta_color="inverse", help="下方數字為『今年以來』已實現的獲利與股息")
+c5.metric("📈 總報酬率", f"{overall_roi:.2f}%") 
 
 temp_cf = data['cash_flows'].copy()
 if t_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_mv))
 try: x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
 except: x_val = 0
-c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%", delta=f"{x_val:.2f}%", delta_color="inverse")
+c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
 
 st.divider()
 st.subheader("📋 庫存與歷史明細")
