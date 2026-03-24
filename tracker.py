@@ -451,8 +451,8 @@ with tab2:
     else:
         st.info("目前還沒有已出清的標的紀錄。")
             
-    st.divider()
-    st.subheader("🥧 資產配置")
+st.divider()
+st.subheader("🥧 資產配置")
     pie_df = pd.DataFrame(p_data)
     pie_df = pie_df[pie_df['市值'] > 0] 
     if not pie_df.empty:
