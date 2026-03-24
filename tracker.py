@@ -368,50 +368,88 @@ c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%", delta=f"{x_val:.2f}%", de
 st.divider()
 st.subheader("📋 庫存與歷史明細")
 
-# 🌟 建立兩個分頁按鈕 (你可以隨意更改裡面的文字)
+# ==========================================
+# 🎨 上色小幫手 (放在外面讓兩個分頁共用)
+# ==========================================
+def color_profit_loss(val):
+    if isinstance(val, (int, float)):
+        if val > 0: return 'color: #ff4b4b;'  # 賺錢顯示紅色
+        elif val < 0: return 'color: #09ab3b;' # 賠錢顯示綠色
+    return ''
+
+# 🌟 建立兩個分頁
 tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 
 # ==========================================
-# 📂 分頁 1：現有庫存 (把你原本的程式碼縮排搬進來)
+# 📂 分頁 1：現有庫存
 # ==========================================
 with tab1:
     if p_data: 
         df_portfolio = pd.DataFrame(p_data)
-        # 這裡是你剛剛成功排序的程式碼
         df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
-        
-        def color_profit_loss(val):
-            if isinstance(val, (int, float)):
-                if val > 0: return 'color: #ff4b4b;'
-                elif val < 0: return 'color: #09ab3b;'
-            return ''
 
-        try: styled_df = df_portfolio.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
-        except AttributeError: styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+        try: 
+            styled_df = df_portfolio.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+        except AttributeError: 
+            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
 
         styled_df = styled_df.format({"股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", "市值": "{:,}", "損益": "{:,}", "總報酬 %": "{:.2f}%"})
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
-        
-        # 💡 小提醒：如果你希望「圓餅圖」也只在看現有庫存時出現，
-        # 可以把你原本畫圓餅圖的程式碼，也「縮排」放進這個 with tab1 裡面喔！
     else:
         st.info("目前沒有現有庫存資料喔！")
 
 # ==========================================
-# 📂 分頁 2：已出清的歷史明細
+# 📂 分頁 2：已出清的歷史戰績
 # ==========================================
 with tab2:
     cleared_data = []
     
-    # 從你的大算盤(inventory)裡面，挑出股數剛好等於 0 的標的
+    # 尋找已經賣光 (股數為 0) 的股票
     for sym, d in data['inventory'].items():
         if d['shares'] == 0:
+            # 從你的交易紀錄 (h_df) 中抓出這檔股票的所有買賣紀錄
+            sym_df = h_df[h_df['Symbol'] == sym]
+            
+            # 分別加總買進與賣出的總額 (確保轉為 float 避免型態錯誤)
+            total_buy = sym_df[sym_df['Type'] == 'Buy']['Total_Amount'].astype(float).sum()
+            total_sell = sym_df[sym_df['Type'] == 'Sell']['Total_Amount'].astype(float).sum()
+            
+            # 如果你有紀錄現金股利，也把它加進獲利裡
+            total_div = sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'].astype(float).sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
+            
+            # 結算損益：總收入(賣出+股利) - 總成本(買進)
+            realized_pnl = (total_sell + total_div) - total_buy
+            
+            # 結算報酬率
+            roi = (realized_pnl / total_buy * 100) if total_buy > 0 else 0.0
+            
             cleared_data.append({
                 "標的": sym,
-                "狀態": "✅ 已全數出清"
-                # 💡 如果你當初在計算 inventory 時，有算出「已實現損益」，
-                # 也可以在這裡加上去！例如："已實現損益": d['realized_pnl']
+                "總買進成本": int(total_buy),
+                "總賣出收入": int(total_sell),
+                "損益": int(round(realized_pnl, 0)),
+                "總報酬 %": roi
             })
+            
+    if cleared_data:
+        df_cleared = pd.DataFrame(cleared_data)
+        df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
+        
+        # 套用紅綠上色魔法！
+        try: 
+            styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+        except AttributeError: 
+            styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+            
+        styled_cleared = styled_cleared.format({
+            "總買進成本": "{:,}", 
+            "總賣出收入": "{:,}", 
+            "損益": "{:,}", 
+            "總報酬 %": "{:.2f}%"
+        })
+        st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
+    else:
+        st.info("目前還沒有已出清的標的紀錄。")
             
     if cleared_data:
         df_cleared = pd.DataFrame(cleared_data)
