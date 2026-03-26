@@ -81,8 +81,15 @@ full_df = pd.DataFrame(response.data)
 
 # 如果資料庫是空的，建立一個空的 DataFrame 並確保欄位存在
 expected_cols_lower = ['id', 'username', 'account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount', 'unit_cost']
-if full_df.empty:
-    full_df = pd.DataFrame(columns=expected_cols_lower)
+if not full_df.empty:
+    full_df['id'] = full_df['id'].astype(int)
+    full_df['Date'] = pd.to_datetime(full_df['Date'], errors='coerce')
+    
+    # 🌟 加上這段防呆：強制把所有跟錢、股數有關的欄位變成真正的數字！
+    for col in ['Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']:
+        full_df[col] = pd.to_numeric(full_df[col], errors='coerce').fillna(0)
+        
+    full_df = full_df.dropna(subset=['Date']).sort_values('Date')
 
 # 💡 魔法轉換：把 Supabase 的小寫欄位名，轉回你原本程式碼習慣的大寫 (這樣你後面的圖表跟算式就完全不用改！)
 rename_map = {
