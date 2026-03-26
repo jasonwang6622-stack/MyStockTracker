@@ -148,11 +148,11 @@ def get_stock_info(symbol):
         pass
 
     return 0.0
+
 # ==========================================
 # 4. 側邊欄：新增交易與登出
 # ==========================================
 st.sidebar.header(f"👋 哈囉，{USER}")
-
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
@@ -195,8 +195,7 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
         calc_price = net_amount / f_shares if f_shares > 0 else 0
         unit_cost = f_total_all_in / f_shares if f_shares > 0 else 0
 
-# 🌟 寫入時，欄位名稱必須改成「小寫」來對應 Supabase 資料庫！
-        # 注意：我們不用再自己算 'id' 了，資料庫會自動發號碼牌！
+        # 🌟 寫入時，欄位名稱必須改成「小寫」來對應 Supabase 資料庫！
         new_row = {
             'username': USER,
             'account': final_account,
@@ -211,7 +210,7 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
             'unit_cost': round(float(unit_cost), 2)
         }
         
-# 💡 光速寫入！直接呼叫 Supabase 的 insert 魔法
+        # 💡 光速寫入！直接呼叫 Supabase 的 insert 魔法
         supabase.table("transactions").insert(new_row).execute()
         
         st.sidebar.success("✅ 成功寫入！")
@@ -225,17 +224,16 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
     st.markdown("👉 **步驟 1：下載標準範本**")
     st.caption("⚠️ `Type` 請填寫：`Buy`, `Sell`, `Cash_Div`, `Stock_Div`")
     
-# 🌟 產生小寫欄位的 CSV 範本
-# 🌟 產生小寫欄位的 CSV 範本
-template_df = pd.DataFrame(columns=['account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount'])
-csv_template = template_df.to_csv(index=False).encode('utf-8-sig') # 加上 sig 避免 Excel 中文亂碼
+    # 🌟 產生小寫欄位的 CSV 範本
+    template_df = pd.DataFrame(columns=['account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount'])
+    csv_template = template_df.to_csv(index=False).encode('utf-8-sig') # 加上 sig 避免 Excel 中文亂碼
         
-st.download_button(
+    st.download_button(
         label="📥 下載 CSV 匯入範本",
         data=csv_template,
         file_name="import_template.csv",
         mime="text/csv"
-        )
+    )
     
     st.markdown("👉 **步驟 2：上傳填妥的 CSV**")
     uploaded_file = st.file_uploader("選擇檔案", type=["csv"], label_visibility="collapsed")
@@ -244,13 +242,24 @@ st.download_button(
         if st.button("🚀 確認批次匯入", type="primary", use_container_width=True):
             try:
                 import_df = pd.read_csv(uploaded_file)
+                template_cols = template_df.columns.tolist()
                 
-                # 防呆 1：檢查欄位有沒有被亂改
-                if not all(col in import_df.columns for col in template_cols):
+                # 防呆 1：檢查欄位有沒有被亂改 (忽略大小寫比較)
+                import_cols_lower = [str(c).lower() for c in import_df.columns]
+                if not all(col in import_cols_lower for col in template_cols):
                     st.error("❌ 欄位錯誤！請確保使用剛下載的最新範本。")
                 elif import_df.empty:
                     st.warning("⚠️ 檔案裡面沒有資料喔！")
                 else:
+                    # 統一將上傳的欄位轉成首字母大寫，方便後續計算邏輯
+                    import_df.columns = import_cols_lower
+                    rename_import_map = {
+                        'account': 'Account', 'date': 'Date', 'type': 'Type', 
+                        'symbol': 'Symbol', 'shares': 'Shares', 'price': 'Price', 
+                        'fee': 'Fee', 'tax': 'Tax', 'total_amount': 'Total_Amount'
+                    }
+                    import_df = import_df.rename(columns=rename_import_map)
+                    
                     # 綁定使用者
                     import_df['Username'] = USER
                     
@@ -293,64 +302,63 @@ st.download_button(
                     
             except Exception as e:
                 st.error(f"❌ 匯入時發生錯誤：{e}")
-                    
-            except Exception as e:
-                st.error(f"❌ 匯入時發生錯誤：{e}")
+
 # ==========================================
 # 🛠️ 側邊欄：帳戶與標的批次管理工具
 # ==========================================
-    st.sidebar.markdown("---")
-    with st.sidebar.expander("🛠️ 帳戶與標的管理 (改名/刪除)"):
-        st.caption("如果打錯字或想清空某個帳戶/股票，可以在這裡批次處理。")
-        manage_type = st.radio("你要管理什麼？", ["🏦 帳戶", "🏷️ 股票標的"])
-        
-        if manage_type == "🏦 帳戶":
-            target_list = user_df['Account'].unique().tolist() if not user_df.empty else []
-            if target_list:
-                old_name = st.selectbox("選擇要處理的帳戶", target_list)
-                new_name = st.text_input("輸入新帳戶名稱 (若只是要刪除請留白)")
-                
-                col1, col2 = st.columns(2)
-                if col1.button("📝 批次改名"):
-                    if new_name:
-                        # 呼叫 Supabase 把該帳戶的所有紀錄換成新名字
-                        supabase.table("transactions").update({"account": new_name}).eq("account", old_name).eq("username", USER).execute()
-                        st.sidebar.success(f"✅ 已全數更新為 {new_name}")
-                        st.rerun()
-                    else:
-                        st.sidebar.warning("請輸入新名稱")
-                        
-                if col2.button("🚨 刪除帳戶"):
-                    # 呼叫 Supabase 刪除該帳戶的所有紀錄
-                    supabase.table("transactions").delete().eq("account", old_name).eq("username", USER).execute()
-                    st.sidebar.success(f"✅ {old_name} 及底下所有紀錄已刪除")
+st.sidebar.markdown("---")
+with st.sidebar.expander("🛠️ 帳戶與標的管理 (改名/刪除)"):
+    st.caption("如果打錯字或想清空某個帳戶/股票，可以在這裡批次處理。")
+    manage_type = st.radio("你要管理什麼？", ["🏦 帳戶", "🏷️ 股票標的"])
+    
+    if manage_type == "🏦 帳戶":
+        target_list = user_df['Account'].unique().tolist() if not user_df.empty else []
+        if target_list:
+            old_name = st.selectbox("選擇要處理的帳戶", target_list)
+            new_name = st.text_input("輸入新帳戶名稱 (若只是要刪除請留白)")
+            
+            col1, col2 = st.columns(2)
+            if col1.button("📝 批次改名"):
+                if new_name:
+                    # 呼叫 Supabase 把該帳戶的所有紀錄換成新名字
+                    supabase.table("transactions").update({"account": new_name}).eq("account", old_name).eq("username", USER).execute()
+                    st.sidebar.success(f"✅ 已全數更新為 {new_name}")
                     st.rerun()
-            else:
-                st.write("目前沒有任何帳戶。")
-                
+                else:
+                    st.sidebar.warning("請輸入新名稱")
+                    
+            if col2.button("🚨 刪除帳戶"):
+                # 呼叫 Supabase 刪除該帳戶的所有紀錄
+                supabase.table("transactions").delete().eq("account", old_name).eq("username", USER).execute()
+                st.sidebar.success(f"✅ {old_name} 及底下所有紀錄已刪除")
+                st.rerun()
         else:
-            target_list = user_df['Symbol'].unique().tolist() if not user_df.empty else []
-            if target_list:
-                old_name = st.selectbox("選擇要處理的標的", target_list)
-                new_name = st.text_input("輸入新標的代號 (若只是要刪除請留白)")
-                
-                col1, col2 = st.columns(2)
-                if col1.button("📝 批次改名 "):
-                    if new_name:
-                        # 呼叫 Supabase 把該股票的所有紀錄換成新名字
-                        supabase.table("transactions").update({"symbol": new_name}).eq("symbol", old_name).eq("username", USER).execute()
-                        st.sidebar.success(f"✅ 已全數更新為 {new_name}")
-                        st.rerun()
-                    else:
-                        st.sidebar.warning("請輸入新代號")
-                        
-                if col2.button("🚨 刪除標的"):
-                    # 呼叫 Supabase 刪除該股票的所有紀錄
-                    supabase.table("transactions").delete().eq("symbol", old_name).eq("username", USER).execute()
-                    st.sidebar.success(f"✅ {old_name} 及底下所有紀錄已刪除")
+            st.write("目前沒有任何帳戶。")
+            
+    else:
+        target_list = user_df['Symbol'].unique().tolist() if not user_df.empty else []
+        if target_list:
+            old_name = st.selectbox("選擇要處理的標的", target_list)
+            new_name = st.text_input("輸入新標的代號 (若只是要刪除請留白)")
+            
+            col1, col2 = st.columns(2)
+            if col1.button("📝 批次改名 "):
+                if new_name:
+                    # 呼叫 Supabase 把該股票的所有紀錄換成新名字
+                    supabase.table("transactions").update({"symbol": new_name}).eq("symbol", old_name).eq("username", USER).execute()
+                    st.sidebar.success(f"✅ 已全數更新為 {new_name}")
                     st.rerun()
-            else:
-                st.write("目前沒有任何標的。")
+                else:
+                    st.sidebar.warning("請輸入新代號")
+                    
+            if col2.button("🚨 刪除標的"):
+                # 呼叫 Supabase 刪除該股票的所有紀錄
+                supabase.table("transactions").delete().eq("symbol", old_name).eq("username", USER).execute()
+                st.sidebar.success(f"✅ {old_name} 及底下所有紀錄已刪除")
+                st.rerun()
+        else:
+            st.write("目前沒有任何標的。")
+
 # ==========================================
 # 5. 資料處理邏輯 (新增今年以來的計算)
 # ==========================================
@@ -392,6 +400,7 @@ if not user_df.empty:
             accounts_data[acc]['cash_flows'].append((row['Date'], total_amt))
         elif t_type == 'Stock_Div':
             inv[sym]['shares'] += shares
+
 # ==========================================
 # 6. 介面呈現 
 # ==========================================
@@ -417,30 +426,29 @@ t_ytd_rpnl = sum(inv_item['ytd_rpnl'] for inv_item in data['inventory'].values()
 ytd_net_invest = sum(-cf[1] for cf in data['cash_flows'] if cf[0].year == current_year)
 
 for sym, d in data['inventory'].items():
-            current_shares = round(d['shares'], 2)
-            if current_shares > 0:
-                cur_p = get_stock_info(sym) 
-                
-                mv = cur_p * d['shares']
-                est_sell_cost = mv * 0.003 + mv * 0.001425
-                net_market_value = mv - est_sell_cost
-                upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
-                roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
-                t_mv += mv
-                t_cost += d['total_cost']
-                t_upnl += upnl
-                
-                p_data.append({
-                    "標的": sym, 
-                    "股數": int(d['shares']), 
-                    "含費均價": d['total_cost']/d['shares'],
-                    "最新現價": cur_p, 
-                    "市值": int(round(mv, 0)), 
-                    # 🌟 把名字改成「未實現損益」，並新增「已實現損益」！
-                    "未實現損益": int(round(upnl, 0)), 
-                    "已實現損益": int(round(d['realized_pnl'], 0)), 
-                    "未實現報酬 %": roi
-                })
+    current_shares = round(d['shares'], 2)
+    if current_shares > 0:
+        cur_p = get_stock_info(sym) 
+        
+        mv = cur_p * d['shares']
+        est_sell_cost = mv * 0.003 + mv * 0.001425
+        net_market_value = mv - est_sell_cost
+        upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
+        roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
+        t_mv += mv
+        t_cost += d['total_cost']
+        t_upnl += upnl
+        
+        p_data.append({
+            "標的": sym, 
+            "股數": int(d['shares']), 
+            "含費均價": d['total_cost']/d['shares'],
+            "最新現價": cur_p, 
+            "市值": int(round(mv, 0)), 
+            "未實現損益": int(round(upnl, 0)), 
+            "已實現損益": int(round(d['realized_pnl'], 0)), 
+            "未實現報酬 %": roi
+        })
 
 st.subheader("📊 投資總覽")
 # 🌟 鎖定帳戶：只抓取「目前選擇的帳戶 (sel_acc)」裡面的買進紀錄！
@@ -455,12 +463,10 @@ overall_roi = ((t_upnl + t_rpnl) / historical_total_buy * 100) if historical_tot
 # 💡 乾淨俐落的版面配置：加上 help 提示泡泡，滑鼠移過去會說明下方數字的意義
 c1, c2, c3 = st.columns(3)
 c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}") 
-# delta_color="off" 變成灰色，因為多投入本金算是中性指標，不是獲利或虧損
 c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}", delta=f"{int(round(ytd_net_invest, 0)):,}", delta_color="off", help="下方數字為『今年以來淨投入』本金")
 c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", help="歷史回溯耗效能，故此處顯示為總未實現損益") 
 
 c4, c5, c6 = st.columns(3)
-# delta_color="inverse" 套用台股紅綠邏輯，賺錢顯示紅色
 c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_ytd_rpnl, 0)):,}", delta_color="inverse", help="下方數字為『今年以來』已實現的獲利與股息")
 c5.metric("📈 總報酬率", f"{overall_roi:.2f}%") 
 
@@ -494,12 +500,10 @@ with tab1:
         df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
 
         try: 
-            # 🌟 把新名字都加進紅綠上色名單
             styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '未實現報酬 %'])
         except AttributeError: 
             styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '未實現報酬 %'])
 
-        # 🌟 更新格式化欄位
         styled_df = styled_df.format({
             "股數": "{:,}", 
             "含費均價": "{:.2f}", 
@@ -512,6 +516,7 @@ with tab1:
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.info("目前沒有現有庫存資料喔！")
+
 # ==========================================
 # 📂 分頁 2：已出清的歷史戰績 (統一帳本版)
 # ==========================================
@@ -524,15 +529,11 @@ with tab2:
         if current_shares <= 0:
             sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
             
-            # 這些是用來顯示明細的，不影響最終損益計算
             total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
             total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
             total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
             
-            # 🌟 核心修復：把「自己相減」的公式刪除，直接呼叫系統大盤算好的權威數字！
             system_rpnl = d['realized_pnl']
-            
-            # 結算報酬率
             roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
             
             cleared_data.append({
@@ -540,7 +541,7 @@ with tab2:
                 "總買進成本": int(total_buy),
                 "總賣出收入": int(total_sell),
                 "股利": int(total_div),
-                "損益": int(round(system_rpnl, 0)), # 💡 這裡統一替換成系統值
+                "損益": int(round(system_rpnl, 0)),
                 "總報酬 %": roi
             })
             
@@ -548,7 +549,6 @@ with tab2:
         df_cleared = pd.DataFrame(cleared_data)
         df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
         
-        # 套用紅綠上色魔法！
         try: 
             styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
         except AttributeError: 
@@ -590,15 +590,12 @@ h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 # 💡 算出總共有幾筆資料
 record_count = len(h_df)
 
-# 將筆數顯示在標題上，並把操作提示改成小字 (caption) 讓畫面更乾淨
 st.write(f"#### 📝 詳細紀錄明細 (共 {record_count} 筆)")
 st.caption("💡 提示：點擊表格欄位可直接修改數字，勾選最左側框框即可刪除。")
 
 display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
 display_df = h_df[display_cols].copy()
 display_df.insert(0, "🗑️ 刪除", False)
-
-# ... (下方接續原本的 edited_df = st.data_editor(...) 程式碼保持不變)
 
 # 2. 🌟 終極互動表格：解鎖所有欄位供編輯！
 edited_df = st.data_editor(
@@ -619,6 +616,7 @@ edited_df = st.data_editor(
     use_container_width=True,
     key="tx_editor" # 🔑 設定 key 來捕捉你修改了什麼
 )
+
 # ==========================================
 # 動作 A：處理刪除 (Supabase 光速版)
 # ==========================================
@@ -626,7 +624,6 @@ deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
 
 if len(deleted_ids) > 0:
     if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
-        # 🌟 直接叫資料庫刪除這些 ID，不用再自己拼圖了！
         for d_id in deleted_ids:
             supabase.table("transactions").delete().eq("id", int(d_id)).execute()
         
@@ -652,12 +649,10 @@ if len(real_edits) > 0:
         for row_idx, edits in real_edits.items():
             record_id = int(display_df.iloc[row_idx]['id'])
             
-            # 準備要更新的資料 (因為 Supabase 欄位是小寫，我們把改動的欄位名轉小寫)
             update_data = {}
             for col_name, new_val in edits.items():
                 update_data[col_name.lower()] = new_val
             
-            # 🌟 光速更新該筆 ID 的資料！
             supabase.table("transactions").update(update_data).eq("id", record_id).execute()
             
         st.success("✅ 已成功儲存修改！")
