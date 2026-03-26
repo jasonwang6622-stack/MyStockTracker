@@ -227,7 +227,7 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
     
 # 🌟 產生小寫欄位的 CSV 範本
 template_df = pd.DataFrame(columns=['account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount'])
-        csv_template = template_df.to_csv(index=False).encode('utf-8-sig') # 加上 sig 避免 Excel 中文亂碼
+csv_template = template_df.to_csv(index=False).encode('utf-8-sig') # 加上 sig 避免 Excel 中文亂碼
         
         st.download_button(
             label="📥 下載 CSV 匯入範本",
