@@ -4,36 +4,29 @@ import yfinance as yf
 import plotly.express as px
 from pyxirr import xirr
 from datetime import datetime
-from streamlit_gsheets import GSheetsConnection
+from supabase import create_client, Client # 🌟 換成 Supabase 套件
 import requests
 
 # ==========================================
-# 1. 網頁基本設定 & 註冊登入系統
+# 1. 網頁基本設定 & Supabase 連線
 # ==========================================
 st.set_page_config(page_title="股票追蹤系統", page_icon="📈", layout="wide")
 st.title("📈 股票追蹤系統")
 
-conn = st.connection("gsheets", type=GSheetsConnection)
+# 🌟 啟動 Supabase 光速引擎
+@st.cache_resource
+def init_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase: Client = init_connection()
 
 def login_system():
     if "current_user" in st.session_state:
         return True
 
     st.subheader("🔐 系統登入與註冊")
-
-    # 讀取帳號密碼本
-    try:
-        users_df = conn.read(worksheet="Users", ttl=0)
-        users_df = users_df.dropna(subset=['Username'])
-        
-        # 🛡️ 終極解法 1：強制轉為字串，並把結尾的 .0 妖怪砍掉，再去掉多餘空白
-        users_df['Username'] = users_df['Username'].astype(str).str.strip()
-        users_df['Password'] = users_df['Password'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        
-    except Exception:
-        st.error("⚠️ 找不到 `Users` 分頁！請在 Google 試算表建立一個名為 `Users` 的分頁，並加上 Username, Password 兩欄。")
-        st.stop()
-
     tab1, tab2 = st.tabs(["🔑 登入", "📝 註冊帳號"])
 
     with tab1:
@@ -44,8 +37,9 @@ def login_system():
                 if l_user == "" or l_pw == "":
                     st.warning("請輸入帳號密碼")
                 else:
-                    matched = users_df[(users_df['Username'] == l_user) & (users_df['Password'] == l_pw)]
-                    if not matched.empty:
+                    # 🌟 瞬間去資料庫比對帳號密碼！
+                    res = supabase.table("users").select("*").eq("username", l_user).eq("password", l_pw).execute()
+                    if len(res.data) > 0:
                         st.session_state["current_user"] = l_user
                         st.success(f"歡迎回來，{l_user}！")
                         st.rerun()
@@ -59,42 +53,45 @@ def login_system():
             if st.form_submit_button("立即註冊"):
                 if r_user == "" or r_pw == "":
                     st.warning("帳號密碼不能為空")
-                elif r_user in users_df['Username'].values:
-                    st.error("⚠️ 此帳號已經有人使用了，請換一個！")
                 elif len(r_user) < 3 or len(r_pw) < 4:
                     st.error("⚠️ 帳號至少 3 碼，密碼至少 4 碼")
                 else:
-                    new_user_df = pd.DataFrame([{"Username": r_user, "Password": r_pw}])
-                    conn.update(worksheet="Users", data=pd.concat([users_df, new_user_df], ignore_index=True))
-                    
-                    # 🛡️ 終極解法 2：註冊完立刻清空快取，確保下一秒登入抓到最新資料
-                    st.cache_data.clear() 
-                    
-                    st.success("✅ 註冊成功！請切換到「登入」分頁進行登入。")
+                    # 檢查帳號是否重複
+                    check = supabase.table("users").select("username").eq("username", r_user).execute()
+                    if len(check.data) > 0:
+                        st.error("⚠️ 此帳號已經有人使用了，請換一個！")
+                    else:
+                        # 🌟 寫入新帳號
+                        supabase.table("users").insert({"username": r_user, "password": r_pw}).execute()
+                        st.success("✅ 註冊成功！請切換到「登入」分頁進行登入。")
 
     return False
+
 if not login_system():
     st.stop()
 
 USER = st.session_state["current_user"]
 
 # ==========================================
-# 2. 資料庫連線 (包含隱形的牆)
+# 2. 資料庫連線 (瞬間拉取資料)
 # ==========================================
-if "my_data" not in st.session_state:
-    try:
-        st.session_state.my_data = conn.read(worksheet="Database", ttl=0)
-    except Exception:
-        st.error("⚠️ 找不到 `Database` 分頁！請將您的資料分頁重新命名為 `Database`。")
-        st.stop()
+# 🌟 直接從 transactions 資料表撈出所有資料，速度超快！
+response = supabase.table("transactions").select("*").execute()
+full_df = pd.DataFrame(response.data)
 
-full_df = st.session_state.my_data
+# 如果資料庫是空的，建立一個空的 DataFrame 並確保欄位存在
+expected_cols_lower = ['id', 'username', 'account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount', 'unit_cost']
+if full_df.empty:
+    full_df = pd.DataFrame(columns=expected_cols_lower)
 
-expected_cols = ['id', 'Username', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']
-if full_df.empty or 'id' not in full_df.columns:
-    full_df = pd.DataFrame(columns=expected_cols)
+# 💡 魔法轉換：把 Supabase 的小寫欄位名，轉回你原本程式碼習慣的大寫 (這樣你後面的圖表跟算式就完全不用改！)
+rename_map = {
+    'username': 'Username', 'account': 'Account', 'date': 'Date', 'type': 'Type', 
+    'symbol': 'Symbol', 'shares': 'Shares', 'price': 'Price', 'fee': 'Fee', 
+    'tax': 'Tax', 'total_amount': 'Total_Amount', 'unit_cost': 'Unit_Cost'
+}
+full_df = full_df.rename(columns=rename_map)
 
-full_df = full_df.dropna(subset=['id'])
 if not full_df.empty:
     full_df['id'] = full_df['id'].astype(int)
     full_df['Date'] = pd.to_datetime(full_df['Date'], errors='coerce')
