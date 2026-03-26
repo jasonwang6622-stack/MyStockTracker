@@ -390,7 +390,11 @@ for sym, d in data['inventory'].items():
                 })
 
 st.subheader("📊 投資總覽")
-overall_roi = (t_upnl / t_cost * 100) if t_cost > 0 else 0
+# 🌟 嚴謹版分母：計算「歷史總累計投入本金」（撈出所有買進紀錄的總花費）
+historical_total_buy = user_df[user_df['Type'] == 'Buy']['Total_Amount'].sum()
+
+# 🌟 終極絕對總報酬率：(總未實現 + 總已實現) / 歷史總本金
+overall_roi = ((t_upnl + t_rpnl) / historical_total_buy * 100) if historical_total_buy > 0 else 0
 
 # 💡 乾淨俐落的版面配置：加上 help 提示泡泡，滑鼠移過去會說明下方數字的意義
 c1, c2, c3 = st.columns(3)
