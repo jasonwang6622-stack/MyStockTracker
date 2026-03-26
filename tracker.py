@@ -428,34 +428,40 @@ with tab1:
     else:
         st.info("目前沒有現有庫存資料喔！")
 # ==========================================
-# 📂 分頁 2：已出清的歷史戰績 (統一帳本版)
+# 📂 分頁 2：已出清的歷史戰績 (新增股利欄位)
 # ==========================================
 with tab2:
     cleared_data = []
     
     # 尋找已經賣光 (股數為 0) 的股票
     for sym, d in data['inventory'].items():
+        # 🌟 修復 2：把 == 0 改成 <= 0，把跌入負數黑洞的股票也抓出來！
         current_shares = round(d['shares'], 2)
+        
         if current_shares <= 0:
+            # 改用最上游的原始總表 (user_df)，並且鎖定目前的帳戶 (sel_acc)
             sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
             
-            # 這些是用來顯示明細的，不影響最終損益計算
+            # 安全地轉換金額並加總
             total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
             total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
+            
+            # 抓取現金股利
             total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
             
-            # 🌟 核心修復：把「自己相減」的公式刪除，直接呼叫系統大盤算好的權威數字！
-            system_rpnl = d['realized_pnl']
+            # 結算損益：總收入(賣出+股利) - 總成本(買進)
+            realized_pnl = (total_sell + total_div) - total_buy
             
             # 結算報酬率
-            roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
+            roi = (realized_pnl / total_buy * 100) if total_buy > 0 else 0.0
             
+            # 🌟 這裡新增了「股利」欄位！
             cleared_data.append({
                 "標的": sym,
                 "總買進成本": int(total_buy),
                 "總賣出收入": int(total_sell),
-                "股利": int(total_div),
-                "損益": int(round(system_rpnl, 0)), # 💡 這裡統一替換成系統值
+                "股利": int(total_div), 
+                "損益": int(round(realized_pnl, 0)),
                 "總報酬 %": roi
             })
             
@@ -469,6 +475,7 @@ with tab2:
         except AttributeError: 
             styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
             
+        # 🌟 這裡也幫「股利」加上了千分位逗號的格式！
         styled_cleared = styled_cleared.format({
             "總買進成本": "{:,}", 
             "總賣出收入": "{:,}", 
