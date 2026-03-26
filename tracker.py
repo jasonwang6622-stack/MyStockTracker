@@ -165,30 +165,27 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
         calc_price = net_amount / f_shares if f_shares > 0 else 0
         unit_cost = f_total_all_in / f_shares if f_shares > 0 else 0
 
-        # 寫入時，打上當前使用者的 Username 標籤
+# 🌟 寫入時，欄位名稱必須改成「小寫」來對應 Supabase 資料庫！
+        # 注意：我們不用再自己算 'id' 了，資料庫會自動發號碼牌！
         new_row = {
-            'id': int(full_df['id'].max() + 1) if not full_df.empty else 1,
-            'Username': USER,
-            'Account': final_account,
-            'Date': f_date.strftime("%Y-%m-%d"),
-            'Type': f_type,
-            'Symbol': final_symbol,
-            'Shares': f_shares,
-            'Price': round(calc_price, 2),
-            'Fee': f_fee,
-            'Tax': f_tax,
-            'Total_Amount': round(f_total_all_in, 2),
-            'Unit_Cost': round(unit_cost, 2)
+            'username': USER,
+            'account': final_account,
+            'date': f_date.strftime("%Y-%m-%d"),
+            'type': f_type,
+            'symbol': final_symbol,
+            'shares': float(f_shares),
+            'price': round(float(calc_price), 2),
+            'fee': float(f_fee),
+            'tax': float(f_tax),
+            'total_amount': round(float(f_total_all_in), 2),
+            'unit_cost': round(float(unit_cost), 2)
         }
         
-        # 💡 將新資料加進「總資料庫 (full_df)」並寫入 Google Sheets
-        updated_full_df = pd.concat([full_df, pd.DataFrame([new_row])], ignore_index=True)
-        conn.update(worksheet="Database", data=updated_full_df)
-        st.cache_data.clear()
-        st.session_state.my_data = updated_full_df
+# 💡 光速寫入！直接呼叫 Supabase 的 insert 魔法
+        supabase.table("transactions").insert(new_row).execute()
         
         st.sidebar.success("✅ 成功寫入！")
-        st.rerun()
+        st.rerun() # 直接重整，網頁會瞬間去要最新資料
 
 
 # ==========================================
@@ -531,49 +528,46 @@ edited_df = st.data_editor(
     use_container_width=True,
     key="tx_editor" # 🔑 設定 key 來捕捉你修改了什麼
 )
-
 # ==========================================
-# 動作 A：處理刪除 (保持原本的邏輯)
+# 動作 A：處理刪除 (Supabase 光速版)
 # ==========================================
 deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
 
 if len(deleted_ids) > 0:
     if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
-        updated_full_df = full_df[~full_df['id'].isin(deleted_ids)]
-        conn.update(worksheet="Database", data=updated_full_df)
-        st.cache_data.clear()
-        st.session_state.my_data = updated_full_df
+        # 🌟 直接叫資料庫刪除這些 ID，不用再自己拼圖了！
+        for d_id in deleted_ids:
+            supabase.table("transactions").delete().eq("id", int(d_id)).execute()
+        
         st.success("✅ 已成功刪除！")
         st.rerun()
 
 # ==========================================
-# 動作 B：處理修改 (神級新功能)
+# 動作 B：處理修改 (Supabase 光速版)
 # ==========================================
 editor_state = st.session_state.get("tx_editor", {})
 edited_rows = editor_state.get("edited_rows", {})
 
-# 過濾出「不是打勾刪除」的真正資料修改
 real_edits = {}
 for row_idx, edits in edited_rows.items():
     meaningful_edits = {k: v for k, v in edits.items() if k != "🗑️ 刪除"}
     if meaningful_edits:
         real_edits[row_idx] = meaningful_edits
 
-# 如果偵測到你有改數字，就跳出儲存按鈕
 if len(real_edits) > 0:
     st.info("✏️ 系統偵測到您修改了資料，請點擊下方按鈕儲存變更：")
     if st.button("💾 儲存修改", type="secondary", use_container_width=True):
-        updated_full_df = full_df.copy()
         
-        # 找出你改了哪一列的哪個欄位，把它寫進總資料庫
         for row_idx, edits in real_edits.items():
-            record_id = display_df.iloc[row_idx]['id']
+            record_id = int(display_df.iloc[row_idx]['id'])
+            
+            # 準備要更新的資料 (因為 Supabase 欄位是小寫，我們把改動的欄位名轉小寫)
+            update_data = {}
             for col_name, new_val in edits.items():
-                updated_full_df.loc[updated_full_df['id'] == record_id, col_name] = new_val
-                
-        # 寫回 Google Sheets
-        conn.update(worksheet="Database", data=updated_full_df)
-        st.cache_data.clear()
-        st.session_state.my_data = updated_full_df
+                update_data[col_name.lower()] = new_val
+            
+            # 🌟 光速更新該筆 ID 的資料！
+            supabase.table("transactions").update(update_data).eq("id", record_id).execute()
+            
         st.success("✅ 已成功儲存修改！")
         st.rerun()
