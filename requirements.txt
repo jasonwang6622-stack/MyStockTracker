@@ -3,4 +3,5 @@ pandas
 yfinance
 plotly
 pyxirr
-st-gsheets-connection
+supabase
+postgrest-py
