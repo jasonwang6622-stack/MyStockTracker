@@ -225,18 +225,16 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
     st.markdown("👉 **步驟 1：下載標準範本**")
     st.caption("⚠️ `Type` 請填寫：`Buy`, `Sell`, `Cash_Div`, `Stock_Div`")
     
-    # 💡 亮點 1：範本把 Price 拿掉了，使用者少填一欄！
-    template_cols = ['Account', 'Date', 'Type', 'Symbol', 'Shares', 'Fee', 'Tax', 'Total_Amount']
-    template_df = pd.DataFrame(columns=template_cols)
-    csv_template = template_df.to_csv(index=False).encode('utf-8-sig') 
-    
-    st.download_button(
-        label="📥 下載 CSV 範本",
-        data=csv_template,
-        file_name="import_template.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
+# 🌟 產生小寫欄位的 CSV 範本
+        template_df = pd.DataFrame(columns=['account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount'])
+        csv_template = template_df.to_csv(index=False).encode('utf-8-sig') # 加上 sig 避免 Excel 中文亂碼
+        
+        st.download_button(
+            label="📥 下載 CSV 匯入範本",
+            data=csv_template,
+            file_name="import_template.csv",
+            mime="text/csv"
+        )
     
     st.markdown("👉 **步驟 2：上傳填妥的 CSV**")
     uploaded_file = st.file_uploader("選擇檔案", type=["csv"], label_visibility="collapsed")
@@ -297,7 +295,61 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                     
             except Exception as e:
                 st.error(f"❌ 匯入時發生錯誤：{e}")
+# ==========================================
+# 🛠️ 側邊欄：帳戶與標的批次管理工具
+# ==========================================
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("🛠️ 帳戶與標的管理 (改名/刪除)"):
+        st.caption("如果打錯字或想清空某個帳戶/股票，可以在這裡批次處理。")
+        manage_type = st.radio("你要管理什麼？", ["🏦 帳戶", "🏷️ 股票標的"])
+        
+        if manage_type == "🏦 帳戶":
+            target_list = user_df['Account'].unique().tolist() if not user_df.empty else []
+            if target_list:
+                old_name = st.selectbox("選擇要處理的帳戶", target_list)
+                new_name = st.text_input("輸入新帳戶名稱 (若只是要刪除請留白)")
                 
+                col1, col2 = st.columns(2)
+                if col1.button("📝 批次改名"):
+                    if new_name:
+                        # 呼叫 Supabase 把該帳戶的所有紀錄換成新名字
+                        supabase.table("transactions").update({"account": new_name}).eq("account", old_name).eq("username", USER).execute()
+                        st.sidebar.success(f"✅ 已全數更新為 {new_name}")
+                        st.rerun()
+                    else:
+                        st.sidebar.warning("請輸入新名稱")
+                        
+                if col2.button("🚨 刪除帳戶"):
+                    # 呼叫 Supabase 刪除該帳戶的所有紀錄
+                    supabase.table("transactions").delete().eq("account", old_name).eq("username", USER).execute()
+                    st.sidebar.success(f"✅ {old_name} 及底下所有紀錄已刪除")
+                    st.rerun()
+            else:
+                st.write("目前沒有任何帳戶。")
+                
+        else:
+            target_list = user_df['Symbol'].unique().tolist() if not user_df.empty else []
+            if target_list:
+                old_name = st.selectbox("選擇要處理的標的", target_list)
+                new_name = st.text_input("輸入新標的代號 (若只是要刪除請留白)")
+                
+                col1, col2 = st.columns(2)
+                if col1.button("📝 批次改名 "):
+                    if new_name:
+                        # 呼叫 Supabase 把該股票的所有紀錄換成新名字
+                        supabase.table("transactions").update({"symbol": new_name}).eq("symbol", old_name).eq("username", USER).execute()
+                        st.sidebar.success(f"✅ 已全數更新為 {new_name}")
+                        st.rerun()
+                    else:
+                        st.sidebar.warning("請輸入新代號")
+                        
+                if col2.button("🚨 刪除標的"):
+                    # 呼叫 Supabase 刪除該股票的所有紀錄
+                    supabase.table("transactions").delete().eq("symbol", old_name).eq("username", USER).execute()
+                    st.sidebar.success(f"✅ {old_name} 及底下所有紀錄已刪除")
+                    st.rerun()
+            else:
+                st.write("目前沒有任何標的。")
 # ==========================================
 # 5. 資料處理邏輯 (新增今年以來的計算)
 # ==========================================
