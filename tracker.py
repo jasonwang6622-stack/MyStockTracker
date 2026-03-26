@@ -248,21 +248,22 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                         axis=1
                     )
                     
-                    # 系統自動給予連續的流水號 ID
-                    start_id = int(full_df['id'].max() + 1) if not full_df.empty else 1
-                    import_df['id'] = range(start_id, start_id + len(import_df))
+                    # 💡 亮點 3：在 Supabase 裡，我們不需要自己算 id 了！
+                    # 整理要匯入的欄位，並把大寫的欄位名稱轉成「小寫」，對應資料庫格式
+                    final_import_df = import_df[['Username', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']].copy()
+                    final_import_df.columns = final_import_df.columns.str.lower()
                     
-                    # 整理成跟資料庫一模一樣的欄位順序 (這時 Price 已經被生出來了)
-                    final_import_df = import_df[['id', 'Username', 'Account', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']]
+                    # 🌟 將表格轉換成「字典列表 (List of Dictionaries)」的格式
+                    records_to_insert = final_import_df.to_dict(orient='records')
                     
-                    # 合併並寫入 Google Sheets
-                    updated_full_df = pd.concat([full_df, final_import_df], ignore_index=True)
-                    conn.update(worksheet="Database", data=updated_full_df)
+                    # 🚀 呼叫 Supabase 進行「批次光速寫入」
+                    supabase.table("transactions").insert(records_to_insert).execute()
                     
-                    st.cache_data.clear()
-                    st.session_state.my_data = updated_full_df
-                    st.success(f"✅ 成功匯入 {len(import_df)} 筆紀錄，並自動計算完單價與均價！")
+                    st.success(f"✅ 成功匯入 {len(import_df)} 筆紀錄，資料庫已自動分配流水號！")
                     st.rerun()
+                    
+            except Exception as e:
+                st.error(f"❌ 匯入時發生錯誤：{e}")
                     
             except Exception as e:
                 st.error(f"❌ 匯入時發生錯誤：{e}")
