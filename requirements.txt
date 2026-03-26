@@ -1,8 +1,7 @@
 streamlit
 pandas
-yfinance>=0.2.40
+yfinance==0.2.37
 plotly
 pyxirr
 supabase
 postgrest-py
-websockets>=13.0
