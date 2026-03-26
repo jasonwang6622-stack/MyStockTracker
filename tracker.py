@@ -108,7 +108,7 @@ if not full_df.empty:
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
-# 3. 核心功能：抓取單純股價
+# 3. 核心功能：抓取單純股價 (三重保險版)
 # ==========================================
 @st.cache_data(ttl=3600)
 def get_stock_info(symbol):
@@ -116,14 +116,36 @@ def get_stock_info(symbol):
     search_list = [symbol]
     if "." not in symbol:
         search_list.extend([f"{symbol}.TW", f"{symbol}.TWO"])
+        
     for s in search_list:
         try:
             ticker = yf.Ticker(s)
-            history = ticker.history(period="2d")
-            if not history.empty: 
-                price = round(history['Close'].iloc[-1], 2)
-                return price  # 💡 改回只回傳一個數字
-        except: continue
+            
+            # 保險 1：嘗試用最快的 fast_info 抓取
+            try:
+                price = ticker.fast_info['lastPrice']
+                if price > 0: return round(price, 2)
+            except: pass
+            
+            # 保險 2：嘗試用原本的 history 抓取
+            history = ticker.history(period="1d")
+            if not history.empty:
+                return round(history['Close'].iloc[-1], 2)
+        except:
+            continue
+            
+    # 🌟 終極保險 3：如果 yfinance 徹底罷工，我們自己寫爬蟲去 Yahoo 抓！
+    try:
+        tw_symbol = f"{symbol}.TW" if "." not in symbol else symbol
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{tw_symbol}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get(url, headers=headers, timeout=5)
+        data = res.json()
+        price = data['chart']['result'][0]['meta']['regularMarketPrice']
+        if price > 0: return round(price, 2)
+    except:
+        pass
+
     return 0.0
 # ==========================================
 # 4. 側邊欄：新增交易與登出
