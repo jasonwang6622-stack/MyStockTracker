@@ -75,23 +75,17 @@ USER = st.session_state["current_user"]
 # ==========================================
 # 2. 資料庫連線 (瞬間拉取資料)
 # ==========================================
-# 🌟 直接從 transactions 資料表撈出所有資料，速度超快！
+# 🌟 直接從 transactions 資料表撈出所有資料
 response = supabase.table("transactions").select("*").execute()
 full_df = pd.DataFrame(response.data)
 
-# 如果資料庫是空的，建立一個空的 DataFrame 並確保欄位存在
+# 如果資料庫是空的，給它一個預設的小寫骨架
 expected_cols_lower = ['id', 'username', 'account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount', 'unit_cost']
-if not full_df.empty:
-    full_df['id'] = full_df['id'].astype(int)
-    full_df['Date'] = pd.to_datetime(full_df['Date'], errors='coerce')
-    
-    # 🌟 加上這段防呆：強制把所有跟錢、股數有關的欄位變成真正的數字！
-    for col in ['Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']:
-        full_df[col] = pd.to_numeric(full_df[col], errors='coerce').fillna(0)
-        
-    full_df = full_df.dropna(subset=['Date']).sort_values('Date')
+if full_df.empty:
+    full_df = pd.DataFrame(columns=expected_cols_lower)
 
-# 💡 魔法轉換：把 Supabase 的小寫欄位名，轉回你原本程式碼習慣的大寫 (這樣你後面的圖表跟算式就完全不用改！)
+# 💡 終極防呆：不管資料庫傳來什麼，先全部轉小寫，再統一翻譯成系統認得的大寫開頭！
+full_df.columns = [str(c).lower() for c in full_df.columns]
 rename_map = {
     'username': 'Username', 'account': 'Account', 'date': 'Date', 'type': 'Type', 
     'symbol': 'Symbol', 'shares': 'Shares', 'price': 'Price', 'fee': 'Fee', 
@@ -99,12 +93,19 @@ rename_map = {
 }
 full_df = full_df.rename(columns=rename_map)
 
+# 🌟 整理資料與強制轉型
 if not full_df.empty:
     full_df['id'] = full_df['id'].astype(int)
     full_df['Date'] = pd.to_datetime(full_df['Date'], errors='coerce')
+    
+    # 強制把所有跟錢、股數有關的欄位變成真正的數字，把空缺補 0
+    for col in ['Shares', 'Price', 'Fee', 'Tax', 'Total_Amount', 'Unit_Cost']:
+        full_df[col] = pd.to_numeric(full_df[col], errors='coerce').fillna(0)
+        
+    # 剔除沒有日期的無效資料，並按日期排序
     full_df = full_df.dropna(subset=['Date']).sort_values('Date')
 
-# 🛡️ 隱形的牆：只抓取屬於當前使用者的資料
+# 🛡️ 隱形的牆：只抓取屬於當前登入者的資料
 user_df = full_df[full_df['Username'] == USER].copy()
 
 # ==========================================
