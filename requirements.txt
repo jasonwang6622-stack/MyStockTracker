@@ -5,3 +5,4 @@ plotly
 pyxirr
 supabase
 postgrest-py
+websockets
