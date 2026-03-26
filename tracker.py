@@ -226,14 +226,15 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
     st.caption("⚠️ `Type` 請填寫：`Buy`, `Sell`, `Cash_Div`, `Stock_Div`")
     
 # 🌟 產生小寫欄位的 CSV 範本
+# 🌟 產生小寫欄位的 CSV 範本
 template_df = pd.DataFrame(columns=['account', 'date', 'type', 'symbol', 'shares', 'price', 'fee', 'tax', 'total_amount'])
 csv_template = template_df.to_csv(index=False).encode('utf-8-sig') # 加上 sig 避免 Excel 中文亂碼
         
-        st.download_button(
-            label="📥 下載 CSV 匯入範本",
-            data=csv_template,
-            file_name="import_template.csv",
-            mime="text/csv"
+st.download_button(
+        label="📥 下載 CSV 匯入範本",
+        data=csv_template,
+        file_name="import_template.csv",
+        mime="text/csv"
         )
     
     st.markdown("👉 **步驟 2：上傳填妥的 CSV**")
