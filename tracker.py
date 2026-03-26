@@ -390,18 +390,14 @@ for sym, d in data['inventory'].items():
                 })
 
 st.subheader("📊 投資總覽")
-# 🌟 防呆加總：無視大小寫、無視空白，只要欄位裡有 'buy' 或 '買' 就全部抓出來加總！
-historical_total_buy = user_df[user_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'].sum()
+# 🌟 鎖定帳戶：只抓取「目前選擇的帳戶 (sel_acc)」裡面的買進紀錄！
+account_df = user_df[user_df['Account'] == sel_acc]
+
+# 計算該帳戶真正的總買進成本
+historical_total_buy = account_df[account_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'].sum()
 
 # 🌟 絕對總報酬率公式
 overall_roi = ((t_upnl + t_rpnl) / historical_total_buy * 100) if historical_total_buy > 0 else 0
-
-# 🛠️ [除錯模式] 直接把系統算出來的數字印在畫面上！
-st.info(f"🕵️‍♂️ **[除錯透視鏡]**\n"
-        f"未實現損益 (`t_upnl`): **{t_upnl}**\n"
-        f"已實現損益 (`t_rpnl`): **{t_rpnl}**\n"
-        f"總買進成本 (`historical_total_buy`): **{historical_total_buy}**\n"
-        f"計算過程: ({t_upnl} + {t_rpnl}) / {historical_total_buy} * 100 = **{overall_roi:.2f}%**")
 
 # 💡 乾淨俐落的版面配置：加上 help 提示泡泡，滑鼠移過去會說明下方數字的意義
 c1, c2, c3 = st.columns(3)
