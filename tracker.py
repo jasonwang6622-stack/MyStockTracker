@@ -463,6 +463,32 @@ for sym, d in data['inventory'].items():
             "已實現損益": int(round(d['realized_pnl'], 0)), 
             "總報酬 %": roi_sym  # 🌟 這裡把原本的「未實現報酬 %」換掉了！
         })
+# ==========================================
+# 🖨️ 一鍵匯出 PDF 報表按鈕 (CSS 魔術)
+# ==========================================
+st.markdown("""
+    <style>
+    /* 🌟 這段 CSS 只有在觸發「列印/匯出 PDF」的瞬間才會發揮作用 */
+    @media print {
+        /* 1. 隱藏左側邊欄 */
+        [data-testid="stSidebar"] { display: none !important; }
+        /* 2. 隱藏右上角的 Streamlit 標題列與漢堡選單 */
+        header { display: none !important; }
+        /* 3. 隱藏畫面上所有的按鈕 (包含刪除、儲存修改等) */
+        .stButton { display: none !important; }
+        /* 4. 讓版面自動往上頂，撐滿整個 A4 頁面 */
+        .main .block-container { max-width: 100% !important; padding-top: 0rem !important; }
+        /* 5. 隱藏這顆列印按鈕本身，不要印在報表上 */
+        #print-button-wrapper { display: none !important; }
+    }
+    </style>
+    
+    <div id="print-button-wrapper" style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+        <button onclick="window.print()" style="background-color: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+            🖨️ 一鍵匯出 PDF 報表
+        </button>
+    </div>
+""", unsafe_allow_html=True)
 
 st.subheader("📊 投資總覽")
 # 🌟 鎖定帳戶：只抓取「目前選擇的帳戶 (sel_acc)」裡面的買進紀錄！
