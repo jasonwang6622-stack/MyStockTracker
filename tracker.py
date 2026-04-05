@@ -420,6 +420,7 @@ st.header(f"💼 帳戶：{sel_acc}")
 data = accounts_data[sel_acc]
 p_data = []
 t_mv, t_cost, t_upnl, t_rpnl = 0.0, 0.0, 0.0, 0.0
+t_net_mv = 0.0  # 🌟 新增：用來裝「扣除稅費後的淨市值」
 
 # 取得原本的總結算
 t_rpnl = sum(inv_item['realized_pnl'] for inv_item in data['inventory'].values())
@@ -438,11 +439,13 @@ for sym, d in data['inventory'].items():
         mv = cur_p * d['shares']
         est_sell_cost = mv * 0.003 + mv * 0.001425
         net_market_value = mv - est_sell_cost
+        
         upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
         roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
         t_mv += mv
         t_cost += d['total_cost']
         t_upnl += upnl
+        t_net_mv += net_market_value  # 🌟 新增這行：把每一檔的淨市值加起來
         
         p_data.append({
             "標的": sym, 
@@ -476,7 +479,7 @@ c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(ro
 c5.metric("📈 總報酬率", f"{overall_roi:.2f}%") 
 
 temp_cf = data['cash_flows'].copy()
-if t_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_mv))
+if t_net_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_net_mv))
 try: x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
 except: x_val = 0
 c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
