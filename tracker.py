@@ -439,13 +439,19 @@ for sym, d in data['inventory'].items():
         mv = cur_p * d['shares']
         est_sell_cost = mv * 0.003 + mv * 0.001425
         net_market_value = mv - est_sell_cost
-        
         upnl = net_market_value - d['total_cost'] if cur_p > 0 else 0.0
-        roi = (upnl / d['total_cost'] * 100) if d['total_cost'] > 0 else 0
+        
+        # 🌟 新增：計算這檔股票的「歷史總投入本金」當作分母
+        sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
+        total_buy_sym = pd.to_numeric(sym_df[sym_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'], errors='coerce').sum()
+        
+        # 🌟 新增：該標的的終極總報酬率 = (未實現 + 已實現) / 歷史總本金
+        roi_sym = ((upnl + d['realized_pnl']) / total_buy_sym * 100) if total_buy_sym > 0 else 0
+
         t_mv += mv
         t_cost += d['total_cost']
         t_upnl += upnl
-        t_net_mv += net_market_value  # 🌟 新增這行：把每一檔的淨市值加起來
+        t_net_mv += net_market_value  # (確保上次修改的淨值變數有留著)
         
         p_data.append({
             "標的": sym, 
@@ -455,7 +461,7 @@ for sym, d in data['inventory'].items():
             "市值": int(round(mv, 0)), 
             "未實現損益": int(round(upnl, 0)), 
             "已實現損益": int(round(d['realized_pnl'], 0)), 
-            "未實現報酬 %": roi
+            "總報酬 %": roi_sym  # 🌟 這裡把原本的「未實現報酬 %」換掉了！
         })
 
 st.subheader("📊 投資總覽")
@@ -508,9 +514,10 @@ with tab1:
         df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
 
         try: 
-            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '未實現報酬 %'])
+            # 🌟 把上色名單裡的 '未實現報酬 %' 替換為 '總報酬 %'
+            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
         except AttributeError: 
-            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '未實現報酬 %'])
+            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
 
         styled_df = styled_df.format({
             "股數": "{:,}", 
@@ -519,7 +526,7 @@ with tab1:
             "市值": "{:,}", 
             "未實現損益": "{:,}", 
             "已實現損益": "{:,}", 
-            "未實現報酬 %": "{:.2f}%"
+            "總報酬 %": "{:.2f}%"  # 🌟 替換這裡的文字對應
         })
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
