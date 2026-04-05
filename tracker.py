@@ -479,7 +479,7 @@ with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)", expanded=
     show_pie = c_opt3.checkbox("🥧 3. 顯示資產配置圓餅圖", value=True)
     show_records = c_opt4.checkbox("📜 4. 顯示管理交易紀錄", value=False) # 💡 預設印報表時不印出落落長的明細
 
-    st.markdown("""
+   st.markdown("""
         <style>
         @media print {
             /* 1. 隱藏不必要的網頁操作元件 */
@@ -495,8 +495,7 @@ with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)", expanded=
             }
             iframe { display: none !important; } 
 
-            /* 🌟 3. 強力膠魔法：防止標題跟下方的表格分家 */
-            /* Streamlit 把每個標題都包在 .element-container 裡面，我們規定標題後面「嚴禁換頁」 */
+            /* 3. 強力膠魔法：防止標題跟下方的表格分家 */
             .element-container:has(h2), .element-container:has(h3), .element-container:has(h4) {
                 page-break-after: avoid !important;
                 break-after: avoid !important;
@@ -504,10 +503,18 @@ with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)", expanded=
                 margin-bottom: 5px !important;
             }
 
-            /* 🌟 4. 強制表格與圖表本身不被從中間切斷 */
-            [data-testid="stMetric"], .stDataFrame, [data-testid="stPlotlyChart"], [data-testid="stHorizontalBlock"], .stTabs {
+            /* 4. 強制表格不被從中間切斷 */
+            [data-testid="stMetric"], .stDataFrame, [data-testid="stHorizontalBlock"], .stTabs {
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
+            }
+            
+            /* 🌟 5. 圖表專屬防護罩 (強制將 Plotly 圖表打包成單一區塊) */
+            [data-testid="stPlotlyChart"] {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                display: inline-block !important; /* 👈 這是讓圖表絕對不會被切斷的關鍵魔法 */
+                width: 100% !important;
             }
         }
         </style>
