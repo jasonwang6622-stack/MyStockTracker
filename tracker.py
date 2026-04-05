@@ -471,15 +471,15 @@ for sym, d in data['inventory'].items():
 with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)", expanded=True):
     st.write("💡 **操作提示**：取消勾選可隱藏該區塊（不會出現在網頁與 PDF 中）。系統已強化標題與表格防裁切功能。")
     
-    # 🌟 新增第四個選項：管理交易紀錄 (分為兩排，畫面更整齊)
+    # 新增第四個選項：管理交易紀錄
     c_opt1, c_opt2 = st.columns(2)
     c_opt3, c_opt4 = st.columns(2)
     show_summary = c_opt1.checkbox("📊 1. 顯示投資總覽", value=True)
     show_tabs = c_opt2.checkbox("📋 2. 顯示庫存與歷史明細", value=True)
     show_pie = c_opt3.checkbox("🥧 3. 顯示資產配置圓餅圖", value=True)
-    show_records = c_opt4.checkbox("📜 4. 顯示管理交易紀錄", value=False) # 💡 預設印報表時不印出落落長的明細
-
-st.markdown("""
+    show_records = c_opt4.checkbox("📜 4. 顯示管理交易紀錄", value=False)
+    
+    st.markdown("""
         <style>
         @media print {
             /* 1. 隱藏不必要的網頁操作元件 */
@@ -513,7 +513,7 @@ st.markdown("""
             [data-testid="stPlotlyChart"] {
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
-                display: inline-block !important; /* 👈 這是讓圖表絕對不會被切斷的關鍵魔法 */
+                display: inline-block !important;
                 width: 100% !important;
             }
         }
@@ -530,7 +530,7 @@ st.markdown("""
         """,
         height=55
     )
-
+    
 # ------------------------------------------
 # A. 投資總覽區塊
 # ------------------------------------------
