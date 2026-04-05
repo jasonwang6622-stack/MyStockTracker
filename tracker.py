@@ -468,22 +468,26 @@ for sym, d in data['inventory'].items():
 # ==========================================
 # 🖨️ 報表匯出與列印防護中心
 # ==========================================
-with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)"):
-    st.write("💡 **操作提示**：取消勾選可隱藏該區塊（不會出現在網頁與 PDF 中）。系統已強化防裁切功能。")
-    c_opt1, c_opt2, c_opt3 = st.columns(3)
-    show_summary = c_opt1.checkbox("📊 顯示投資總覽", value=True)
-    show_tabs = c_opt2.checkbox("📋 顯示庫存與歷史明細", value=True)
-    show_pie = c_opt3.checkbox("🥧 顯示資產配置圓餅圖", value=True)
+with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)", expanded=True):
+    st.write("💡 **操作提示**：取消勾選可隱藏該區塊（不會出現在網頁與 PDF 中）。系統已強化標題與表格防裁切功能。")
+    
+    # 🌟 新增第四個選項：管理交易紀錄 (分為兩排，畫面更整齊)
+    c_opt1, c_opt2 = st.columns(2)
+    c_opt3, c_opt4 = st.columns(2)
+    show_summary = c_opt1.checkbox("📊 1. 顯示投資總覽", value=True)
+    show_tabs = c_opt2.checkbox("📋 2. 顯示庫存與歷史明細", value=True)
+    show_pie = c_opt3.checkbox("🥧 3. 顯示資產配置圓餅圖", value=True)
+    show_records = c_opt4.checkbox("📜 4. 顯示管理交易紀錄", value=False) # 💡 預設印報表時不印出落落長的明細
 
     st.markdown("""
         <style>
         @media print {
-            /* 1. 隱藏不必要的網頁元件 */
-            [data-testid="stSidebar"], header, .stButton, [data-testid="stExpander"], footer, #tabs-b-0-0, #tabs-b-0-1 { 
+            /* 1. 隱藏不必要的網頁操作元件 */
+            [data-testid="stSidebar"], header, .stButton, [data-testid="stExpander"], footer { 
                 display: none !important; 
             }
             
-            /* 2. 版面優化 */
+            /* 2. 版面撐滿，消除留白 */
             .main .block-container { 
                 max-width: 100% !important; 
                 padding-top: 0rem !important; 
@@ -491,24 +495,19 @@ with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)"):
             }
             iframe { display: none !important; } 
 
-            /* 🌟 3. 超強力防裁切魔法：針對所有可能被切斷的容器 */
-            .element-container, .stDataFrame, [data-testid="stMetric"], [data-testid="stPlotlyChart"], .stTabs, [data-testid="stHorizontalBlock"] {
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
-                -webkit-column-break-inside: avoid !important;
-                display: block !important; /* 強制區塊化 */
-            }
-
-            /* 4. 防止標題與內容分家 */
-            h2, h3, h4 {
+            /* 🌟 3. 強力膠魔法：防止標題跟下方的表格分家 */
+            /* Streamlit 把每個標題都包在 .element-container 裡面，我們規定標題後面「嚴禁換頁」 */
+            .element-container:has(h2), .element-container:has(h3), .element-container:has(h4) {
                 page-break-after: avoid !important;
                 break-after: avoid !important;
-                margin-top: 30px !important;
+                margin-top: 25px !important;
+                margin-bottom: 5px !important;
             }
-            
-            /* 5. 確保表格文字清晰 */
-            .stDataFrame div {
-                overflow: visible !important;
+
+            /* 🌟 4. 強制表格與圖表本身不被從中間切斷 */
+            [data-testid="stMetric"], .stDataFrame, [data-testid="stPlotlyChart"], [data-testid="stHorizontalBlock"], .stTabs {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
             }
         }
         </style>
@@ -517,12 +516,12 @@ with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)"):
     components.html(
         """
         <div style="display: flex; justify-content: flex-start; margin-top: 5px;">
-            <button onclick="window.parent.print()" style="background-color: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-family: sans-serif;">
-                🖨️ 匯出當前畫面為 PDF
+            <button onclick="window.parent.print()" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-family: sans-serif;">
+                🖨️ 匯出勾選內容為 PDF
             </button>
         </div>
         """,
-        height=45
+        height=55
     )
 
 # ------------------------------------------
@@ -579,7 +578,7 @@ if show_tabs:
             })
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
         else:
-            st.info("目前沒有現有庫存資料。")
+            st.info("目前沒有現有庫存資料喔！")
 
     with tab2:
         cleared_data = []
@@ -626,64 +625,65 @@ if show_pie and p_data:
         st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------------------
-# D. 管理交易紀錄 (這是之前不小心漏掉的！)
+# D. 管理交易紀錄區塊 (🌟 現在受控於第 4 個打勾選項！)
 # ------------------------------------------
-st.divider()
-st.subheader("📜 管理交易紀錄")
+if show_records:
+    st.divider()
+    st.subheader("📜 管理交易紀錄")
 
-h_df = user_df[user_df['Account'] == sel_acc].copy()
-h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
-h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
+    h_df = user_df[user_df['Account'] == sel_acc].copy()
+    h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
+    h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 
-st.write(f"#### 📝 詳細紀錄明細 (共 {len(h_df)} 筆)")
-st.caption("💡 提示：點擊表格可直接修改，勾選🗑️即可點擊下方按鈕刪除。")
+    st.write(f"#### 📝 詳細紀錄明細 (共 {len(h_df)} 筆)")
+    st.caption("💡 提示：點擊表格可直接修改，勾選🗑️即可點擊下方按鈕刪除。")
 
-display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
-display_df = h_df[display_cols].copy()
-display_df.insert(0, "🗑️ 刪除", False)
+    display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
+    display_df = h_df[display_cols].copy()
+    display_df.insert(0, "🗑️ 刪除", False)
 
-edited_df = st.data_editor(
-    display_df,
-    column_config={
-        "🗑️ 刪除": st.column_config.CheckboxColumn("🗑️ 刪除", default=False),
-        "id": None, 
-        "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
-        "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
-        "Symbol": st.column_config.TextColumn("🏷️ 代號"),
-        "Shares": st.column_config.NumberColumn("🔢 股數"),
-        "Price": st.column_config.NumberColumn("💲 單價", format="%.2f"),
-        "Total_Amount": st.column_config.NumberColumn("💰 總額"),
-        "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
-    },
-    disabled=["id"], 
-    hide_index=True,
-    use_container_width=True,
-    key="tx_editor"
-)
+    edited_df = st.data_editor(
+        display_df,
+        column_config={
+            "🗑️ 刪除": st.column_config.CheckboxColumn("🗑️ 刪除", default=False),
+            "id": None, 
+            "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
+            "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
+            "Symbol": st.column_config.TextColumn("🏷️ 代號"),
+            "Shares": st.column_config.NumberColumn("🔢 股數"),
+            "Price": st.column_config.NumberColumn("💲 單價", format="%.2f"),
+            "Total_Amount": st.column_config.NumberColumn("💰 總額"),
+            "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
+        },
+        disabled=["id"], 
+        hide_index=True,
+        use_container_width=True,
+        key="tx_editor"
+    )
 
-# 處理刪除
-deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
-if len(deleted_ids) > 0:
-    if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
-        for d_id in deleted_ids:
-            supabase.table("transactions").delete().eq("id", int(d_id)).execute()
-        st.success("✅ 已成功刪除！")
-        st.rerun()
+    # 處理刪除
+    deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
+    if len(deleted_ids) > 0:
+        if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
+            for d_id in deleted_ids:
+                supabase.table("transactions").delete().eq("id", int(d_id)).execute()
+            st.success("✅ 已成功刪除！")
+            st.rerun()
 
-# 處理修改
-editor_state = st.session_state.get("tx_editor", {})
-edited_rows = editor_state.get("edited_rows", {})
-if edited_rows:
-    st.info("✏️ 系統偵測到修改，請點擊下方儲存：")
-    if st.button("💾 儲存修改", type="secondary", use_container_width=True):
-        for row_idx, edits in edited_rows.items():
-            record_id = int(display_df.iloc[row_idx]['id'])
-            update_data = {}
-            for col_name, new_val in edits.items():
-                if col_name == 'Date' and new_val:
-                    update_data[col_name.lower()] = new_val.strftime("%Y-%m-%d")
-                else:
-                    update_data[col_name.lower()] = new_val
-            supabase.table("transactions").update(update_data).eq("id", record_id).execute()
-        st.success("✅ 修改已儲存！")
-        st.rerun()
+    # 處理修改
+    editor_state = st.session_state.get("tx_editor", {})
+    edited_rows = editor_state.get("edited_rows", {})
+    if edited_rows:
+        st.info("✏️ 系統偵測到修改，請點擊下方儲存：")
+        if st.button("💾 儲存修改", type="secondary", use_container_width=True):
+            for row_idx, edits in edited_rows.items():
+                record_id = int(display_df.iloc[row_idx]['id'])
+                update_data = {}
+                for col_name, new_val in edits.items():
+                    if col_name == 'Date' and new_val:
+                        update_data[col_name.lower()] = new_val.strftime("%Y-%m-%d")
+                    else:
+                        update_data[col_name.lower()] = new_val
+                supabase.table("transactions").update(update_data).eq("id", record_id).execute()
+            st.success("✅ 修改已儲存！")
+            st.rerun()
