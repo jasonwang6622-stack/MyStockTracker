@@ -659,9 +659,14 @@ if len(real_edits) > 0:
             
             update_data = {}
             for col_name, new_val in edits.items():
-                update_data[col_name.lower()] = new_val
+                # 🌟 核心修復：如果修改的是「日期」，必須把它轉成文字字串，資料庫才看得懂！
+                if col_name == 'Date' and new_val is not None:
+                    update_data[col_name.lower()] = new_val.strftime("%Y-%m-%d")
+                else:
+                    update_data[col_name.lower()] = new_val
             
+            # 寫入 Supabase 資料庫
             supabase.table("transactions").update(update_data).eq("id", record_id).execute()
             
         st.success("✅ 已成功儲存修改！")
-        st.rerun()
+        st.rerun() # 🌟 這裡會強制系統從頭跑一次，去資料庫撈取最新資料，上方總覽就會同步更新！
