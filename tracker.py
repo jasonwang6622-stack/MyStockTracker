@@ -483,16 +483,6 @@ if t_net_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_net_
 try: x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
 except: x_val = 0
 c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
-# 🌟 [除錯透視鏡] 直接印出 XIRR 的底層計算陣列
-with st.expander("🕵️‍♂️ [XIRR 除錯] 攤開現金流時間軸"):
-    st.write("請檢查下方清單：有沒有『正數(流入)』的時間點早於『負數(買進)』？或是正負號完全顛倒了？")
-    
-    # 將現金流陣列轉換成 DataFrame 方便閱讀
-    cf_df = pd.DataFrame(temp_cf, columns=["日期", "現金流 (負數為買進，正數為賣出/市值)"])
-    cf_df['日期'] = pd.to_datetime(cf_df['日期']).dt.date
-    
-    # 按照日期排序印出
-    st.dataframe(cf_df.sort_values("日期").style.format({"現金流 (負數為買進，正數為賣出/市值)": "{:,.0f}"}), use_container_width=True)
 
 st.divider()
 st.subheader("📋 庫存與歷史明細")
