@@ -465,63 +465,10 @@ for sym, d in data['inventory'].items():
             "總報酬 %": roi_sym  # 🌟 這裡把原本的「未實現報酬 %」換掉了！
         })
         
-# ==========================================
-# 🖨️ 專業級一鍵匯出 PDF 系統
-# ==========================================
-# 這裡放置「隱形濾鏡」：網頁看得到，列印時自動隱藏不需要的雜訊
-st.markdown("""
-    <style>
-    @media print {
-        /* 1. 全域隱藏：側邊欄、標題列、按鈕、頁尾、提示框、所有分隔線 */
-        [data-testid="stSidebar"], header, .stButton, footer, .stAlert, hr { 
-            display: none !important; 
-        }
-        
-        /* 2. 移除使用者指定的雜訊：主標題(h1)、帳戶選擇器(selectbox)、帳戶標題(h2) */
-        h1, [data-testid="stSelectbox"], h2 { 
-            display: none !important; 
-        }
-        
-        /* 3. 隱藏「非必要」區塊：資產配置(sec-pie) 與 交易紀錄(sec-records) */
-        .element-container:has(#sec-pie), [data-testid="stPlotlyChart"],
-        .element-container:has(#sec-records), [data-testid="stDataEditor"],
-        .element-container:has(#sec-records) ~ .element-container { 
-            display: none !important; 
-        }
-
-        /* 4. 版面重配置：去除邊距，讓報表撐滿 A4 */
-        .main .block-container { 
-            max-width: 100% !important; 
-            padding: 0rem !important; 
-        }
-        iframe { display: none !important; } 
-
-        /* 5. 智慧防裁切：標題與內容不分離，表格不腰斬 */
-        .element-container:has(h3) { page-break-after: avoid !important; break-after: avoid !important; }
-        [data-testid="stMetric"], .stDataFrame, .stTabs { 
-            page-break-inside: avoid !important; 
-            break-inside: avoid !important; 
-        }
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# 放置匯出按鈕
-components.html(
-    """
-    <div style="display: flex; justify-content: flex-end; margin-bottom: 5px;">
-        <button onclick="window.parent.print()" style="background-color: #1E88E5; color: white; border: none; padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-family: sans-serif;">
-            🖨️ 產出專業財務報表 (PDF)
-        </button>
-    </div>
-    """,
-    height=60
-)
-
 # ------------------------------------------
 # A. 投資總覽區塊
 # ------------------------------------------
-st.markdown('<h3 id="sec-summary">📊 投資總覽</h3>', unsafe_allow_html=True)
+st.subheader("📊 投資總覽")
 
 account_df = user_df[user_df['Account'] == sel_acc]
 historical_total_buy = account_df[account_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'].sum()
@@ -546,7 +493,7 @@ c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
 # B. 庫存與歷史明細區塊
 # ------------------------------------------
 st.divider()
-st.markdown('<h3 id="sec-tabs">📋 庫存與歷史明細</h3>', unsafe_allow_html=True)
+st.subheader("📋 庫存與歷史明細")
 
 def color_profit_loss(val):
     if isinstance(val, (int, float)):
@@ -604,11 +551,11 @@ with tab2:
         st.info("無已出清明細。")
 
 # ------------------------------------------
-# C. 資產配置區塊 (網頁可看，列印隱藏)
+# C. 資產配置區塊
 # ------------------------------------------
-st.divider()
-st.markdown('<h3 id="sec-pie">🥧 資產配置</h3>', unsafe_allow_html=True)
 if p_data:
+    st.divider()
+    st.subheader("🥧 資產配置")
     pie_df = pd.DataFrame(p_data)
     pie_df = pie_df[pie_df['市值'] > 0] 
     if not pie_df.empty:
@@ -618,17 +565,17 @@ if p_data:
         st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------------------
-# D. 管理交易紀錄區塊 (網頁可操作，列印隱藏)
+# D. 管理交易紀錄區塊
 # ------------------------------------------
 st.divider()
-st.markdown('<h3 id="sec-records">📜 管理交易紀錄</h3>', unsafe_allow_html=True)
+st.subheader("📜 管理交易紀錄")
 
 h_df = user_df[user_df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
 h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 
 st.write(f"#### 📝 詳細紀錄明細 (共 {len(h_df)} 筆)")
-st.caption("💡 提示：此區塊僅供管理使用，不會出現在 PDF 報表中。")
+st.caption("💡 提示：點擊表格可直接修改，勾選🗑️即可點擊下方按鈕刪除。")
 
 display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
 display_df = h_df[display_cols].copy()
@@ -653,7 +600,7 @@ edited_df = st.data_editor(
     key="tx_editor"
 )
 
-# 處理刪除與修改 (代碼保持不變...)
+# 處理刪除
 deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
 if len(deleted_ids) > 0:
     if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
@@ -662,10 +609,11 @@ if len(deleted_ids) > 0:
         st.success("✅ 已成功刪除！")
         st.rerun()
 
+# 處理修改
 editor_state = st.session_state.get("tx_editor", {})
 edited_rows = editor_state.get("edited_rows", {})
 if edited_rows:
-    st.info("✏️ 偵測到修改")
+    st.info("✏️ 系統偵測到修改，請點擊下方儲存：")
     if st.button("💾 儲存修改", type="secondary", use_container_width=True):
         for row_idx, edits in edited_rows.items():
             record_id = int(display_df.iloc[row_idx]['id'])
@@ -676,5 +624,5 @@ if edited_rows:
                 else:
                     update_data[col_name.lower()] = new_val
             supabase.table("transactions").update(update_data).eq("id", record_id).execute()
-        st.success("✅ 儲存成功！")
+        st.success("✅ 修改已儲存！")
         st.rerun()
