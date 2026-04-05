@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import plotly.express as px
+import streamlit.components.v1 as components
 from pyxirr import xirr
 from datetime import datetime
 from supabase import create_client, Client # 🌟 換成 Supabase 套件
@@ -463,32 +464,39 @@ for sym, d in data['inventory'].items():
             "已實現損益": int(round(d['realized_pnl'], 0)), 
             "總報酬 %": roi_sym  # 🌟 這裡把原本的「未實現報酬 %」換掉了！
         })
+        
 # ==========================================
-# 🖨️ 一鍵匯出 PDF 報表按鈕 (CSS 魔術)
+# 🖨️ 一鍵匯出 PDF 報表按鈕 (iframe 突破版)
 # ==========================================
+# 1. 魔法隱形斗篷 (純 CSS，不會被擋)
 st.markdown("""
     <style>
-    /* 🌟 這段 CSS 只有在觸發「列印/匯出 PDF」的瞬間才會發揮作用 */
     @media print {
-        /* 1. 隱藏左側邊欄 */
+        /* 隱藏左側邊欄 */
         [data-testid="stSidebar"] { display: none !important; }
-        /* 2. 隱藏右上角的 Streamlit 標題列與漢堡選單 */
+        /* 隱藏右上角標題列 */
         header { display: none !important; }
-        /* 3. 隱藏畫面上所有的按鈕 (包含刪除、儲存修改等) */
+        /* 隱藏原生按鈕 */
         .stButton { display: none !important; }
-        /* 4. 讓版面自動往上頂，撐滿整個 A4 頁面 */
+        /* 版面撐滿 */
         .main .block-container { max-width: 100% !important; padding-top: 0rem !important; }
-        /* 5. 隱藏這顆列印按鈕本身，不要印在報表上 */
-        #print-button-wrapper { display: none !important; }
+        /* 隱藏我們自己加的這顆列印按鈕，不要印出來 */
+        iframe { display: none !important; } 
     }
     </style>
-    
-    <div id="print-button-wrapper" style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
-        <button onclick="window.print()" style="background-color: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+""", unsafe_allow_html=True)
+
+# 2. 具有真實 JavaScript 靈魂的按鈕
+components.html(
+    """
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 5px;">
+        <button onclick="window.parent.print()" style="background-color: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-family: sans-serif;">
             🖨️ 一鍵匯出 PDF 報表
         </button>
     </div>
-""", unsafe_allow_html=True)
+    """,
+    height=45
+)
 
 st.subheader("📊 投資總覽")
 # 🌟 鎖定帳戶：只抓取「目前選擇的帳戶 (sel_acc)」裡面的買進紀錄！
