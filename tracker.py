@@ -466,158 +466,141 @@ for sym, d in data['inventory'].items():
         })
         
 # ==========================================
-# 🖨️ 一鍵匯出 PDF 報表按鈕 (iframe 突破版)
+# 🖨️ 報表匯出與列印防護中心
 # ==========================================
-# 1. 魔法隱形斗篷 (純 CSS，不會被擋)
-st.markdown("""
-    <style>
-    @media print {
-        /* 隱藏左側邊欄 */
-        [data-testid="stSidebar"] { display: none !important; }
-        /* 隱藏右上角標題列 */
-        header { display: none !important; }
-        /* 隱藏原生按鈕 */
-        .stButton { display: none !important; }
-        /* 版面撐滿 */
-        .main .block-container { max-width: 100% !important; padding-top: 0rem !important; }
-        /* 隱藏我們自己加的這顆列印按鈕，不要印出來 */
-        iframe { display: none !important; } 
-    }
-    </style>
-""", unsafe_allow_html=True)
+with st.expander("🖨️ 報表匯出設定 (點擊展開)"):
+    st.write("💡 **列印小技巧**：勾選下方項目來決定報表要呈現的內容。系統已開啟「智慧防裁切」，圖表與表格會自動完整跨頁。")
+    c_opt1, c_opt2, c_opt3 = st.columns(3)
+    show_summary = c_opt1.checkbox("📊 顯示投資總覽", value=True)
+    show_tabs = c_opt2.checkbox("📋 顯示庫存與歷史明細", value=True)
+    show_pie = c_opt3.checkbox("🥧 顯示資產配置圓餅圖", value=True)
 
-# 2. 具有真實 JavaScript 靈魂的按鈕
-components.html(
-    """
-    <div style="display: flex; justify-content: flex-end; margin-bottom: 5px;">
-        <button onclick="window.parent.print()" style="background-color: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-family: sans-serif;">
-            🖨️ 一鍵匯出 PDF 報表
-        </button>
-    </div>
-    """,
-    height=45
-)
-
-st.subheader("📊 投資總覽")
-# 🌟 鎖定帳戶：只抓取「目前選擇的帳戶 (sel_acc)」裡面的買進紀錄！
-account_df = user_df[user_df['Account'] == sel_acc]
-
-# 計算該帳戶真正的總買進成本
-historical_total_buy = account_df[account_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'].sum()
-
-# 🌟 絕對總報酬率公式
-overall_roi = ((t_upnl + t_rpnl) / historical_total_buy * 100) if historical_total_buy > 0 else 0
-
-# 💡 乾淨俐落的版面配置：加上 help 提示泡泡，滑鼠移過去會說明下方數字的意義
-c1, c2, c3 = st.columns(3)
-c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}") 
-c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}", delta=f"{int(round(ytd_net_invest, 0)):,}", delta_color="off", help="下方數字為『今年以來淨投入』本金")
-c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", help="歷史回溯耗效能，故此處顯示為總未實現損益") 
-
-c4, c5, c6 = st.columns(3)
-c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_ytd_rpnl, 0)):,}", delta_color="inverse", help="下方數字為『今年以來』已實現的獲利與股息")
-c5.metric("📈 總報酬率", f"{overall_roi:.2f}%") 
-
-temp_cf = data['cash_flows'].copy()
-if t_net_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_net_mv))
-try: x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
-except: x_val = 0
-c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
-
-st.divider()
-st.subheader("📋 庫存與歷史明細")
-
-# ==========================================
-# 🎨 上色小幫手 (放在外面讓兩個分頁共用)
-# ==========================================
-def color_profit_loss(val):
-    if isinstance(val, (int, float)):
-        if val > 0: return 'color: #ff4b4b;'  # 賺錢顯示紅色
-        elif val < 0: return 'color: #09ab3b;' # 賠錢顯示綠色
-    return ''
-
-# 🌟 建立兩個分頁
-tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
-
-# ==========================================
-# 📂 分頁 1：現有庫存 (顯示未實現 + 已實現)
-# ==========================================
-with tab1:
-    if p_data: 
-        df_portfolio = pd.DataFrame(p_data)
-        df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
-
-        try: 
-            # 🌟 把上色名單裡的 '未實現報酬 %' 替換為 '總報酬 %'
-            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
-        except AttributeError: 
-            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
-
-        styled_df = styled_df.format({
-            "股數": "{:,}", 
-            "含費均價": "{:.2f}", 
-            "最新現價": "{:.2f}", 
-            "市值": "{:,}", 
-            "未實現損益": "{:,}", 
-            "已實現損益": "{:,}", 
-            "總報酬 %": "{:.2f}%"  # 🌟 替換這裡的文字對應
-        })
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    else:
-        st.info("目前沒有現有庫存資料喔！")
-
-# ==========================================
-# 📂 分頁 2：已出清的歷史戰績 (統一帳本版)
-# ==========================================
-with tab2:
-    cleared_data = []
-    
-    # 尋找已經賣光 (股數為 0) 的股票
-    for sym, d in data['inventory'].items():
-        current_shares = round(d['shares'], 2)
-        if current_shares <= 0:
-            sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
+    st.markdown("""
+        <style>
+        @media print {
+            /* 1. 隱藏網頁操作介面 */
+            [data-testid="stSidebar"], header, .stButton, [data-testid="stExpander"] { display: none !important; }
+            .main .block-container { max-width: 100% !important; padding-top: 0rem !important; }
+            iframe { display: none !important; } 
             
-            total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
-            total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
-            total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
+            /* 🌟 2. 核心防裁切魔法：禁止這些元件從中間被切斷 */
+            [data-testid="stMetric"], .stDataFrame, [data-testid="stPlotlyChart"], div[data-testid="stTabs"] {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
             
-            system_rpnl = d['realized_pnl']
-            roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
-            
-            cleared_data.append({
-                "標的": sym,
-                "總買進成本": int(total_buy),
-                "總賣出收入": int(total_sell),
-                "股利": int(total_div),
-                "損益": int(round(system_rpnl, 0)),
-                "總報酬 %": roi
+            /* 3. 讓標題緊黏著下方的表格，避免標題在上一頁，表格卻掉到下一頁 */
+            h2, h3, h4 {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+                margin-top: 20px !important;
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    components.html(
+        """
+        <div style="display: flex; justify-content: flex-start; margin-top: 5px;">
+            <button onclick="window.parent.print()" style="background-color: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-family: sans-serif;">
+                🖨️ 匯出勾選內容為 PDF
+            </button>
+        </div>
+        """,
+        height=45
+    )
+
+# ------------------------------------------
+# 以下為畫面渲染區塊 (已接上勾選開關)
+# ------------------------------------------
+
+if show_summary:
+    st.subheader("📊 投資總覽")
+    # 鎖定帳戶：只抓取「目前選擇的帳戶」裡面的買進紀錄
+    account_df = user_df[user_df['Account'] == sel_acc]
+    historical_total_buy = account_df[account_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'].sum()
+    overall_roi = ((t_upnl + t_rpnl) / historical_total_buy * 100) if historical_total_buy > 0 else 0
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}") 
+    c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}", delta=f"{int(round(ytd_net_invest, 0)):,}", delta_color="off", help="下方數字為『今年以來淨投入』本金")
+    c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}", help="歷史回溯耗效能，故此處顯示為總未實現損益") 
+
+    c4, c5, c6 = st.columns(3)
+    c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_ytd_rpnl, 0)):,}", delta_color="inverse", help="下方數字為『今年以來』已實現的獲利與股息")
+    c5.metric("📈 總報酬率", f"{overall_roi:.2f}%") 
+
+    temp_cf = data['cash_flows'].copy()
+    if t_net_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_net_mv))
+    try: x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
+    except: x_val = 0
+    c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
+
+
+if show_tabs:
+    st.divider()
+    st.subheader("📋 庫存與歷史明細")
+
+    # 🎨 上色小幫手
+    def color_profit_loss(val):
+        if isinstance(val, (int, float)):
+            if val > 0: return 'color: #ff4b4b;'  # 賺錢紅
+            elif val < 0: return 'color: #09ab3b;' # 賠錢綠
+        return ''
+
+    tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
+
+    with tab1:
+        if p_data: 
+            df_portfolio = pd.DataFrame(p_data)
+            df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
+            try: 
+                styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+            except AttributeError: 
+                styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+
+            styled_df = styled_df.format({
+                "股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", 
+                "市值": "{:,}", "未實現損益": "{:,}", "已實現損益": "{:,}", "總報酬 %": "{:.2f}%"
             })
-            
-    if cleared_data:
-        df_cleared = pd.DataFrame(cleared_data)
-        df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
-        
-        try: 
-            styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
-        except AttributeError: 
-            styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
-            
-        styled_cleared = styled_cleared.format({
-            "總買進成本": "{:,}", 
-            "總賣出收入": "{:,}", 
-            "股利": "{:,}",
-            "損益": "{:,}", 
-            "總報酬 %": "{:.2f}%"
-        })
-        st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
-    else:
-        st.info("目前還沒有已出清的標的紀錄。")
-            
-# ==========================================
-# 🥧 第三層：資產配置 (圓餅圖)
-# ==========================================
-if p_data:
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("目前沒有現有庫存資料喔！")
+
+    with tab2:
+        cleared_data = []
+        for sym, d in data['inventory'].items():
+            current_shares = round(d['shares'], 2)
+            if current_shares <= 0:
+                sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
+                total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
+                total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
+                total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
+                
+                system_rpnl = d['realized_pnl']
+                roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
+                cleared_data.append({
+                    "標的": sym, "總買進成本": int(total_buy), "總賣出收入": int(total_sell),
+                    "股利": int(total_div), "損益": int(round(system_rpnl, 0)), "總報酬 %": roi
+                })
+                
+        if cleared_data:
+            df_cleared = pd.DataFrame(cleared_data)
+            df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
+            try: 
+                styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+            except AttributeError: 
+                styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+                
+            styled_cleared = styled_cleared.format({
+                "總買進成本": "{:,}", "總賣出收入": "{:,}", "股利": "{:,}",
+                "損益": "{:,}", "總報酬 %": "{:.2f}%"
+            })
+            st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
+        else:
+            st.info("目前還沒有已出清的標的紀錄。")
+
+if show_pie and p_data:
     st.divider()
     st.subheader("🥧 資產配置")
     pie_df = pd.DataFrame(p_data)
