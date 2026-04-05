@@ -241,10 +241,13 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
     if uploaded_file is not None:
         if st.button("🚀 確認批次匯入", type="primary", use_container_width=True):
             try:
+                # 🌟 智慧判斷編碼：先嘗試 UTF-8，失敗的話就切換成 Excel 中文版愛用的 Big5
+                try:
                     import_df = pd.read_csv(uploaded_file)
                 except UnicodeDecodeError:
-                    uploaded_file.seek(0) # 讓讀取游標回到檔案最開頭
+                    uploaded_file.seek(0)
                     import_df = pd.read_csv(uploaded_file, encoding='big5')
+                    
                 template_cols = template_df.columns.tolist()
                 
                 # 防呆 1：檢查欄位有沒有被亂改 (忽略大小寫比較)
@@ -305,7 +308,6 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                     
             except Exception as e:
                 st.error(f"❌ 匯入時發生錯誤：{e}")
-
 # ==========================================
 # 🛠️ 側邊欄：帳戶與標的批次管理工具
 # ==========================================
