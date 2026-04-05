@@ -469,54 +469,59 @@ for sym, d in data['inventory'].items():
 # 🖨️ 報表匯出與列印防護中心
 # ==========================================
 with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)", expanded=True):
-    st.write("💡 **操作提示**：取消勾選可隱藏該區塊（不會出現在網頁與 PDF 中）。系統已強化標題與表格防裁切功能。")
+    st.write("💡 **操作提示**：取消勾選『只會影響匯出的 PDF 報表』，網頁依然會為您顯示所有完整資料！")
     
-    # 新增第四個選項：管理交易紀錄
+    # 選單綁定變數
     c_opt1, c_opt2 = st.columns(2)
     c_opt3, c_opt4 = st.columns(2)
-    show_summary = c_opt1.checkbox("📊 1. 顯示投資總覽", value=True)
-    show_tabs = c_opt2.checkbox("📋 2. 顯示庫存與歷史明細", value=True)
-    show_pie = c_opt3.checkbox("🥧 3. 顯示資產配置圓餅圖", value=True)
-    show_records = c_opt4.checkbox("📜 4. 顯示管理交易紀錄", value=False)
+    print_summary = c_opt1.checkbox("📊 1. 報表印出「投資總覽」", value=True)
+    print_tabs = c_opt2.checkbox("📋 2. 報表印出「庫存與歷史明細」", value=True)
+    print_pie = c_opt3.checkbox("🥧 3. 報表印出「資產配置圓餅圖」", value=True)
+    print_records = c_opt4.checkbox("📜 4. 報表印出「管理交易紀錄」", value=False)
     
-    st.markdown("""
-        <style>
-        @media print {
-            /* 1. 隱藏不必要的網頁操作元件 */
-            [data-testid="stSidebar"], header, .stButton, [data-testid="stExpander"], footer { 
-                display: none !important; 
-            }
-            
-            /* 2. 版面撐滿，消除留白 */
-            .main .block-container { 
-                max-width: 100% !important; 
-                padding-top: 0rem !important; 
-                padding-bottom: 0rem !important;
-            }
-            iframe { display: none !important; } 
+    # 🌟 核心魔法：動態生成「專屬於印表機」的隱藏指令
+    dynamic_css = ""
+    if not print_summary:
+        dynamic_css += '.element-container:has(#sec-summary), [data-testid="stMetric"], [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) { display: none !important; }\n'
+    if not print_tabs:
+        dynamic_css += '.element-container:has(#sec-tabs), [data-testid="stTabs"] { display: none !important; }\n'
+    if not print_pie:
+        dynamic_css += '.element-container:has(#sec-pie), [data-testid="stPlotlyChart"] { display: none !important; }\n'
+    if not print_records:
+        # 利用 CSS 兄弟選擇器 (~)，把「交易紀錄」標題以及它『後面所有的東西』一次全隱藏！
+        dynamic_css += '.element-container:has(#sec-records), .element-container:has(#sec-records) ~ .element-container { display: none !important; }\n'
 
-            /* 3. 強力膠魔法：防止標題跟下方的表格分家 */
-            .element-container:has(h2), .element-container:has(h3), .element-container:has(h4) {
+    st.markdown(f"""
+        <style>
+        @media print {{
+            /* 1. 隱藏側邊欄、按鈕、選單等操作介面 */
+            [data-testid="stSidebar"], header, .stButton, [data-testid="stExpander"], footer {{ display: none !important; }}
+            .main .block-container {{ max-width: 100% !important; padding-top: 0rem !important; padding-bottom: 0rem !important; }}
+            iframe[title="streamlit_components.v1.html"] {{ display: none !important; }} 
+
+            /* 2. 標題與表格防分離 */
+            .element-container:has(h3) {{
                 page-break-after: avoid !important;
                 break-after: avoid !important;
-                margin-top: 25px !important;
-                margin-bottom: 5px !important;
-            }
-
-            /* 4. 強制表格不被從中間切斷 */
-            [data-testid="stMetric"], .stDataFrame, [data-testid="stHorizontalBlock"], .stTabs {
+                margin-top: 20px !important;
+            }}
+            .stDataFrame, [data-testid="stHorizontalBlock"], .stTabs {{
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
-            }
+            }}
             
-            /* 🌟 5. 圖表專屬防護罩 (強制將 Plotly 圖表打包成單一區塊) */
-            [data-testid="stPlotlyChart"] {
+            /* 🌟 3. 針對 Plotly 圓餅圖的『不可分割』終極裝甲 */
+            .element-container:has([data-testid="stPlotlyChart"]), [data-testid="stPlotlyChart"], .js-plotly-plot {{
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
-                display: inline-block !important;
+                display: block !important;
                 width: 100% !important;
-            }
-        }
+                clear: both !important;
+            }}
+
+            /* 🌟 4. 注入使用者剛剛勾選的動態隱藏指令 */
+            {dynamic_css}
+        }}
         </style>
     """, unsafe_allow_html=True)
 
@@ -530,99 +535,98 @@ with st.expander("🖨️ 報表匯出與顯示設定 (點擊展開)", expanded=
         """,
         height=55
     )
-    
+
 # ------------------------------------------
-# A. 投資總覽區塊
+# A. 投資總覽區塊 (網頁永遠顯示，不再受 if 控制！)
 # ------------------------------------------
-if show_summary:
-    st.subheader("📊 投資總覽")
-    account_df = user_df[user_df['Account'] == sel_acc]
-    historical_total_buy = account_df[account_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'].sum()
-    overall_roi = ((t_upnl + t_rpnl) / historical_total_buy * 100) if historical_total_buy > 0 else 0
+st.markdown('<h3 id="sec-summary">📊 投資總覽</h3>', unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}") 
-    c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}", delta=f"{int(round(ytd_net_invest, 0)):,}", delta_color="off")
-    c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}") 
+account_df = user_df[user_df['Account'] == sel_acc]
+historical_total_buy = account_df[account_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Total_Amount'].sum()
+overall_roi = ((t_upnl + t_rpnl) / historical_total_buy * 100) if historical_total_buy > 0 else 0
 
-    c4, c5, c6 = st.columns(3)
-    c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_ytd_rpnl, 0)):,}", delta_color="inverse")
-    c5.metric("📈 總報酬率", f"{overall_roi:.2f}%") 
+c1, c2, c3 = st.columns(3)
+c1.metric("💰 總市值", f"${int(round(t_mv, 0)):,}") 
+c2.metric("🪙 總投資成本", f"${int(round(t_cost, 0)):,}", delta=f"{int(round(ytd_net_invest, 0)):,}", delta_color="off")
+c3.metric("📉 未實現損益", f"${int(round(t_upnl, 0)):,}") 
 
-    temp_cf = data['cash_flows'].copy()
-    if t_net_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_net_mv))
-    try: x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
-    except: x_val = 0
-    c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
+c4, c5, c6 = st.columns(3)
+c4.metric("🧧 已實現損益", f"${int(round(t_rpnl, 0)):,}", delta=f"{int(round(t_ytd_rpnl, 0)):,}", delta_color="inverse")
+c5.metric("📈 總報酬率", f"{overall_roi:.2f}%") 
+
+temp_cf = data['cash_flows'].copy()
+if t_net_mv > 0: temp_cf.append((pd.to_datetime(datetime.today().date()), t_net_mv))
+try: x_val = xirr([cf[0] for cf in temp_cf], [cf[1] for cf in temp_cf]) * 100 if len(temp_cf) >= 2 else 0
+except: x_val = 0
+c6.metric("📊 年化報酬 (XIRR)", f"{x_val:.2f}%")
 
 # ------------------------------------------
 # B. 庫存與歷史明細區塊
 # ------------------------------------------
-if show_tabs:
-    st.divider()
-    st.subheader("📋 庫存與歷史明細")
+st.divider()
+st.markdown('<h3 id="sec-tabs">📋 庫存與歷史明細</h3>', unsafe_allow_html=True)
 
-    def color_profit_loss(val):
-        if isinstance(val, (int, float)):
-            if val > 0: return 'color: #ff4b4b;'
-            elif val < 0: return 'color: #09ab3b;'
-        return ''
+def color_profit_loss(val):
+    if isinstance(val, (int, float)):
+        if val > 0: return 'color: #ff4b4b;'
+        elif val < 0: return 'color: #09ab3b;'
+    return ''
 
-    tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
+tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 
-    with tab1:
-        if p_data: 
-            df_portfolio = pd.DataFrame(p_data)
-            df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
-            try: 
-                styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
-            except AttributeError: 
-                styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+with tab1:
+    if p_data: 
+        df_portfolio = pd.DataFrame(p_data)
+        df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
+        try: 
+            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+        except AttributeError: 
+            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
 
-            styled_df = styled_df.format({
-                "股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", 
-                "市值": "{:,}", "未實現損益": "{:,}", "已實現損益": "{:,}", "總報酬 %": "{:.2f}%"
+        styled_df = styled_df.format({
+            "股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", 
+            "市值": "{:,}", "未實現損益": "{:,}", "已實現損益": "{:,}", "總報酬 %": "{:.2f}%"
+        })
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("目前沒有現有庫存資料喔！")
+
+with tab2:
+    cleared_data = []
+    for sym, d in data['inventory'].items():
+        if round(d['shares'], 2) <= 0:
+            sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
+            total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
+            total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
+            total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
+            
+            system_rpnl = d['realized_pnl']
+            roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
+            cleared_data.append({
+                "標的": sym, "總買進成本": int(total_buy), "總賣出收入": int(total_sell),
+                "股利": int(total_div), "損益": int(round(system_rpnl, 0)), "總報酬 %": roi
             })
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("目前沒有現有庫存資料喔！")
-
-    with tab2:
-        cleared_data = []
-        for sym, d in data['inventory'].items():
-            if round(d['shares'], 2) <= 0:
-                sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
-                total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
-                total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
-                total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
-                
-                system_rpnl = d['realized_pnl']
-                roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
-                cleared_data.append({
-                    "標的": sym, "總買進成本": int(total_buy), "總賣出收入": int(total_sell),
-                    "股利": int(total_div), "損益": int(round(system_rpnl, 0)), "總報酬 %": roi
-                })
-                
-        if cleared_data:
-            df_cleared = pd.DataFrame(cleared_data)
-            df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
-            try: 
-                styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
-            except AttributeError: 
-                styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
-            styled_cleared = styled_cleared.format({
-                "總買進成本": "{:,}", "總賣出收入": "{:,}", "股利": "{:,}", "損益": "{:,}", "總報酬 %": "{:.2f}%"
-            })
-            st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
-        else:
-            st.info("尚無已出清紀錄。")
+            
+    if cleared_data:
+        df_cleared = pd.DataFrame(cleared_data)
+        df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
+        try: 
+            styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+        except AttributeError: 
+            styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+        styled_cleared = styled_cleared.format({
+            "總買進成本": "{:,}", "總賣出收入": "{:,}", "股利": "{:,}", "損益": "{:,}", "總報酬 %": "{:.2f}%"
+        })
+        st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
+    else:
+        st.info("尚無已出清紀錄。")
 
 # ------------------------------------------
 # C. 資產配置區塊
 # ------------------------------------------
-if show_pie and p_data:
+if p_data:
     st.divider()
-    st.subheader("🥧 資產配置")
+    st.markdown('<h3 id="sec-pie">🥧 資產配置</h3>', unsafe_allow_html=True)
     pie_df = pd.DataFrame(p_data)
     pie_df = pie_df[pie_df['市值'] > 0] 
     if not pie_df.empty:
@@ -632,65 +636,64 @@ if show_pie and p_data:
         st.plotly_chart(fig, use_container_width=True)
 
 # ------------------------------------------
-# D. 管理交易紀錄區塊 (🌟 現在受控於第 4 個打勾選項！)
+# D. 管理交易紀錄區塊
 # ------------------------------------------
-if show_records:
-    st.divider()
-    st.subheader("📜 管理交易紀錄")
+st.divider()
+st.markdown('<h3 id="sec-records">📜 管理交易紀錄</h3>', unsafe_allow_html=True)
 
-    h_df = user_df[user_df['Account'] == sel_acc].copy()
-    h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
-    h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
+h_df = user_df[user_df['Account'] == sel_acc].copy()
+h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
+h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
 
-    st.write(f"#### 📝 詳細紀錄明細 (共 {len(h_df)} 筆)")
-    st.caption("💡 提示：點擊表格可直接修改，勾選🗑️即可點擊下方按鈕刪除。")
+st.write(f"#### 📝 詳細紀錄明細 (共 {len(h_df)} 筆)")
+st.caption("💡 提示：點擊表格可直接修改，勾選🗑️即可點擊下方按鈕刪除。")
 
-    display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
-    display_df = h_df[display_cols].copy()
-    display_df.insert(0, "🗑️ 刪除", False)
+display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost']
+display_df = h_df[display_cols].copy()
+display_df.insert(0, "🗑️ 刪除", False)
 
-    edited_df = st.data_editor(
-        display_df,
-        column_config={
-            "🗑️ 刪除": st.column_config.CheckboxColumn("🗑️ 刪除", default=False),
-            "id": None, 
-            "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
-            "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
-            "Symbol": st.column_config.TextColumn("🏷️ 代號"),
-            "Shares": st.column_config.NumberColumn("🔢 股數"),
-            "Price": st.column_config.NumberColumn("💲 單價", format="%.2f"),
-            "Total_Amount": st.column_config.NumberColumn("💰 總額"),
-            "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
-        },
-        disabled=["id"], 
-        hide_index=True,
-        use_container_width=True,
-        key="tx_editor"
-    )
+edited_df = st.data_editor(
+    display_df,
+    column_config={
+        "🗑️ 刪除": st.column_config.CheckboxColumn("🗑️ 刪除", default=False),
+        "id": None, 
+        "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
+        "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
+        "Symbol": st.column_config.TextColumn("🏷️ 代號"),
+        "Shares": st.column_config.NumberColumn("🔢 股數"),
+        "Price": st.column_config.NumberColumn("💲 單價", format="%.2f"),
+        "Total_Amount": st.column_config.NumberColumn("💰 總額"),
+        "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
+    },
+    disabled=["id"], 
+    hide_index=True,
+    use_container_width=True,
+    key="tx_editor"
+)
 
-    # 處理刪除
-    deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
-    if len(deleted_ids) > 0:
-        if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
-            for d_id in deleted_ids:
-                supabase.table("transactions").delete().eq("id", int(d_id)).execute()
-            st.success("✅ 已成功刪除！")
-            st.rerun()
+# 處理刪除
+deleted_ids = edited_df[edited_df["🗑️ 刪除"] == True]["id"].tolist()
+if len(deleted_ids) > 0:
+    if st.button(f"🚨 確認刪除選取的 {len(deleted_ids)} 筆紀錄", type="primary", use_container_width=True):
+        for d_id in deleted_ids:
+            supabase.table("transactions").delete().eq("id", int(d_id)).execute()
+        st.success("✅ 已成功刪除！")
+        st.rerun()
 
-    # 處理修改
-    editor_state = st.session_state.get("tx_editor", {})
-    edited_rows = editor_state.get("edited_rows", {})
-    if edited_rows:
-        st.info("✏️ 系統偵測到修改，請點擊下方儲存：")
-        if st.button("💾 儲存修改", type="secondary", use_container_width=True):
-            for row_idx, edits in edited_rows.items():
-                record_id = int(display_df.iloc[row_idx]['id'])
-                update_data = {}
-                for col_name, new_val in edits.items():
-                    if col_name == 'Date' and new_val:
-                        update_data[col_name.lower()] = new_val.strftime("%Y-%m-%d")
-                    else:
-                        update_data[col_name.lower()] = new_val
-                supabase.table("transactions").update(update_data).eq("id", record_id).execute()
-            st.success("✅ 修改已儲存！")
-            st.rerun()
+# 處理修改
+editor_state = st.session_state.get("tx_editor", {})
+edited_rows = editor_state.get("edited_rows", {})
+if edited_rows:
+    st.info("✏️ 系統偵測到修改，請點擊下方儲存：")
+    if st.button("💾 儲存修改", type="secondary", use_container_width=True):
+        for row_idx, edits in edited_rows.items():
+            record_id = int(display_df.iloc[row_idx]['id'])
+            update_data = {}
+            for col_name, new_val in edits.items():
+                if col_name == 'Date' and new_val:
+                    update_data[col_name.lower()] = new_val.strftime("%Y-%m-%d")
+                else:
+                    update_data[col_name.lower()] = new_val
+            supabase.table("transactions").update(update_data).eq("id", record_id).execute()
+        st.success("✅ 修改已儲存！")
+        st.rerun()
