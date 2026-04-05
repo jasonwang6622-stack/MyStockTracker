@@ -241,7 +241,10 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
     if uploaded_file is not None:
         if st.button("🚀 確認批次匯入", type="primary", use_container_width=True):
             try:
-                import_df = pd.read_csv(uploaded_file)
+                    import_df = pd.read_csv(uploaded_file)
+                except UnicodeDecodeError:
+                    uploaded_file.seek(0) # 讓讀取游標回到檔案最開頭
+                    import_df = pd.read_csv(uploaded_file, encoding='big5')
                 template_cols = template_df.columns.tolist()
                 
                 # 防呆 1：檢查欄位有沒有被亂改 (忽略大小寫比較)
