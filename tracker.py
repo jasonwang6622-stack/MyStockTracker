@@ -112,7 +112,7 @@ user_df = full_df[full_df['Username'] == USER].copy()
 # ==========================================
 # 3. 核心功能：抓取單純股價 (三重保險版)
 # ==========================================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def get_stock_info(symbol):
     symbol = str(symbol).strip().upper()
     search_list = [symbol]
