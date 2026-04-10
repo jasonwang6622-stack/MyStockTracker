@@ -523,32 +523,51 @@ with tab1:
 with tab2:
     cleared_data = []
     for sym, d in data['inventory'].items():
+        # 判斷股數是否為 0 (或接近 0)，代表已出清
         if round(d['shares'], 2) <= 0:
             sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
+            
+            # 🌟 新增：計算該標的歷史上總共買進了多少股數
+            hist_shares = pd.to_numeric(sym_df[sym_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Shares'], errors='coerce').sum()
+            
             total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
             total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
             total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
             
             system_rpnl = d['realized_pnl']
             roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
+            
             cleared_data.append({
-                "標的": sym, "總買進成本": int(total_buy), "總賣出收入": int(total_sell),
-                "股利": int(total_div), "損益": int(round(system_rpnl, 0)), "總報酬 %": roi
+                "標的": sym, 
+                "歷史持有股數": int(hist_shares), # 🌟 新增欄位
+                "總買進成本": int(total_buy), 
+                "總賣出收入": int(total_sell),
+                "股利": int(total_div), 
+                "損益": int(round(system_rpnl, 0)), 
+                "總報酬 %": roi
             })
             
     if cleared_data:
         df_cleared = pd.DataFrame(cleared_data)
         df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
+        
+        # 設置上色與格式
         try: 
             styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
         except AttributeError: 
             styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+            
         styled_cleared = styled_cleared.format({
-            "總買進成本": "{:,}", "總賣出收入": "{:,}", "股利": "{:,}", "損益": "{:,}", "總報酬 %": "{:.2f}%"
+            "歷史持有股數": "{:,}", # 🌟 加上千分位
+            "總買進成本": "{:,}", 
+            "總賣出收入": "{:,}", 
+            "股利": "{:,}", 
+            "損益": "{:,}", 
+            "總報酬 %": "{:.2f}%"
         })
         st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
     else:
-        st.info("無已出清明細。")
+        st.info("尚無已出清紀錄。")
 
 # ------------------------------------------
 # C. 資產配置區塊
