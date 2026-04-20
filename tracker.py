@@ -591,34 +591,59 @@ st.subheader("📜 管理交易紀錄")
 
 h_df = user_df[user_df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
-h_df = h_df.dropna(subset=['Date']).sort_values('Date', ascending=False)
+h_df = h_df.dropna(subset=['Date'])
 
-# 🌟 新增魔法：安全地計算每筆交易的單筆損益
-def calculate_single_pnl(row):
-    try:
-        t = str(row['Type']).lower()
-        amount = float(row['Total_Amount']) if pd.notna(row['Total_Amount']) else 0.0
-        shares = float(row['Shares']) if pd.notna(row['Shares']) else 0.0
-        cost = float(row['Unit_Cost']) if pd.notna(row['Unit_Cost']) else 0.0
+# 🌟 核心修復：使用「時間軸推進法」精算真實歷史滾動成本
+# 為了算成本，我們必須讓時間「由舊到新」順著推演
+calc_df = h_df.sort_values('Date', ascending=True).copy()
+inventory_tracker = {}
+pnl_dict = {}
+
+for idx, row in calc_df.iterrows():
+    sym = row['Symbol']
+    t = str(row['Type']).lower()
+    amount = float(row['Total_Amount']) if pd.notna(row['Total_Amount']) else 0.0
+    shares = float(row['Shares']) if pd.notna(row['Shares']) else 0.0
+    row_id = row['id']
+    
+    # 初始化該檔股票的庫存與總成本
+    if sym not in inventory_tracker:
+        inventory_tracker[sym] = {'shares': 0.0, 'cost': 0.0}
         
-        if t in ['sell', '賣出']:
-            # 賣出淨額 - (賣出股數 * 持有均價)
-            return amount - (shares * cost)
-        elif t in ['cash_div', '現金股利']:
-            # 現金股利 = 全額獲利
-            return amount
-        else:
-            return None # 買進或配股不顯示損益
-    except:
-        return None
+    inv = inventory_tracker[sym]
+    
+    if t in ['buy', '買進']:
+        inv['shares'] += shares
+        inv['cost'] += amount
+        pnl_dict[row_id] = None  # 買進不顯示損益
+        
+    elif t in ['sell', '賣出']:
+        # 算出「賣出當下的歷史平均成本」
+        avg_cost = (inv['cost'] / inv['shares']) if inv['shares'] > 0 else 0.0
+        cost_of_sold = shares * avg_cost
+        
+        # 真實損益 = 賣出總額 - (賣出股數 * 歷史均價)
+        pnl_dict[row_id] = amount - cost_of_sold
+        
+        # 扣除庫存與對應成本
+        inv['shares'] -= shares
+        inv['cost'] -= cost_of_sold
+        
+    elif t in ['cash_div', '現金股利']:
+        pnl_dict[row_id] = amount  # 股息100%認列獲利
+        
+    else:
+        pnl_dict[row_id] = None
 
-# 🌟 執行計算並新增一個欄位
-h_df['單筆損益'] = h_df.apply(calculate_single_pnl, axis=1)
+# 將算好的真實損益，利用 id 對應回原本的資料表
+h_df['單筆損益'] = h_df['id'].map(pnl_dict)
+
+# 確保畫面顯示順序是「最新日期在最上面」
+h_df = h_df.sort_values('Date', ascending=False)
 
 st.write(f"#### 📝 詳細紀錄明細 (共 {len(h_df)} 筆)")
-st.caption("💡 提示：點擊表格可直接修改，勾選🗑️即可點擊下方按鈕刪除。單筆損益為系統自動計算，無法手動編輯。")
+st.caption("💡 提示：點擊表格可直接修改，勾選🗑️即可點擊下方按鈕刪除。單筆損益依據「滾動平均成本」自動計算，無法手動編輯。")
 
-# 🌟 將 '單筆損益' 加進要顯示的欄位清單中
 display_cols = ['id', 'Date', 'Type', 'Symbol', 'Shares', 'Price', 'Total_Amount', 'Unit_Cost', '單筆損益']
 display_df = h_df[display_cols].copy()
 display_df.insert(0, "🗑️ 刪除", False)
@@ -635,11 +660,9 @@ edited_df = st.data_editor(
         "Price": st.column_config.NumberColumn("💲 單價", format="%.2f"),
         "Total_Amount": st.column_config.NumberColumn("💰 總額"),
         "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
-        # 🌟 設定單筆損益的視覺化格式
         "單筆損益": st.column_config.NumberColumn("📈 單筆損益", format="%.0f"),
     },
-    # 🌟 將 id 與 單筆損益 鎖定，避免不小心改到系統計算值
-    disabled=["id", "單筆損益"], 
+    disabled=["id", "單筆損益"], # 鎖定損益欄位避免誤改
     hide_index=True,
     use_container_width=True,
     key="tx_editor"
@@ -666,13 +689,12 @@ if edited_rows:
             for col_name, new_val in edits.items():
                 if col_name == 'Date' and new_val:
                     update_data[col_name.lower()] = new_val.strftime("%Y-%m-%d")
-                # 🌟 攔截：如果使用者嘗試修改「單筆損益」，系統不要寫入資料庫，因為資料庫沒有這個實體欄位
                 elif col_name == '單筆損益':
-                    continue
+                    continue # 攔截虛擬欄位
                 else:
                     update_data[col_name.lower()] = new_val
             
-            if update_data: # 確保有實體資料被修改才寫入
+            if update_data: 
                 supabase.table("transactions").update(update_data).eq("id", record_id).execute()
         st.success("✅ 修改已儲存！")
         st.rerun()
