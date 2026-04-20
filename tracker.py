@@ -505,50 +505,43 @@ def color_profit_loss(val):
 tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 
 with tab1:
-        if p_data: 
-            df_portfolio = pd.DataFrame(p_data)
-            df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
+    if p_data: 
+        df_portfolio = pd.DataFrame(p_data)
+        df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
+        try: 
+            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+        except AttributeError: 
+            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
 
-            try: 
-                # 這裡也要記得把 '成本金額' 加入不參與上色的名單中 (或是視需求調整)
-                styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
-            except AttributeError: 
-                styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
-
-            styled_df = styled_df.format({
-                "股數": "{:,}", 
-                "含費均價": "{:.2f}", 
-                "成本金額": "{:,}",  # 🌟 新增：設定千分位顯示
-                "最新現價": "{:.2f}", 
-                "市值": "{:,}", 
-                "未實現損益": "{:,}", 
-                "已實現損益": "{:,}", 
-                "總報酬 %": "{:.2f}%"
-            })
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        styled_df = styled_df.format({
+            "股數": "{:,}", 
+            "含費均價": "{:.2f}", 
+            "成本金額": "{:,}", 
+            "最新現價": "{:.2f}", 
+            "市值": "{:,}", 
+            "未實現損益": "{:,}", 
+            "已實現損益": "{:,}", 
+            "總報酬 %": "{:.2f}%"
+        })
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.info("目前無庫存資料。")
 
 with tab2:
     cleared_data = []
     for sym, d in data['inventory'].items():
-        # 判斷股數是否為 0 (或接近 0)，代表已出清
         if round(d['shares'], 2) <= 0:
             sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
-            
-            # 🌟 新增：計算該標的歷史上總共買進了多少股數
             hist_shares = pd.to_numeric(sym_df[sym_df['Type'].astype(str).str.contains('buy|買', case=False, na=False)]['Shares'], errors='coerce').sum()
-            
             total_buy = pd.to_numeric(sym_df[sym_df['Type'] == 'Buy']['Total_Amount'], errors='coerce').sum()
             total_sell = pd.to_numeric(sym_df[sym_df['Type'] == 'Sell']['Total_Amount'], errors='coerce').sum()
             total_div = pd.to_numeric(sym_df[sym_df['Type'] == 'Cash_Div']['Total_Amount'], errors='coerce').sum() if 'Cash_Div' in sym_df['Type'].values else 0.0
             
             system_rpnl = d['realized_pnl']
             roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
-            
             cleared_data.append({
                 "標的": sym, 
-                "歷史持有股數": int(hist_shares), # 🌟 新增欄位
+                "歷史持有股數": int(hist_shares), 
                 "總買進成本": int(total_buy), 
                 "總賣出收入": int(total_sell),
                 "股利": int(total_div), 
@@ -559,15 +552,12 @@ with tab2:
     if cleared_data:
         df_cleared = pd.DataFrame(cleared_data)
         df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
-        
-        # 設置上色與格式
         try: 
             styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
         except AttributeError: 
             styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
-            
         styled_cleared = styled_cleared.format({
-            "歷史持有股數": "{:,}", # 🌟 加上千分位
+            "歷史持有股數": "{:,}", 
             "總買進成本": "{:,}", 
             "總賣出收入": "{:,}", 
             "股利": "{:,}", 
@@ -576,7 +566,7 @@ with tab2:
         })
         st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
     else:
-        st.info("尚無已出清紀錄。")
+        st.info("無已出清明細。")
 
 # ------------------------------------------
 # C. 資產配置區塊
@@ -602,8 +592,6 @@ h_df = user_df[user_df['Account'] == sel_acc].copy()
 h_df['Date'] = pd.to_datetime(h_df['Date'], errors='coerce').dt.date
 h_df = h_df.dropna(subset=['Date'])
 
-# 🌟 核心修復：使用「時間軸推進法」精算真實歷史滾動成本
-# 為了算成本，我們必須讓時間「由舊到新」順著推演
 calc_df = h_df.sort_values('Date', ascending=True).copy()
 inventory_tracker = {}
 pnl_dict = {}
@@ -615,7 +603,6 @@ for idx, row in calc_df.iterrows():
     shares = float(row['Shares']) if pd.notna(row['Shares']) else 0.0
     row_id = row['id']
     
-    # 初始化該檔股票的庫存與總成本
     if sym not in inventory_tracker:
         inventory_tracker[sym] = {'shares': 0.0, 'cost': 0.0}
         
@@ -624,30 +611,22 @@ for idx, row in calc_df.iterrows():
     if t in ['buy', '買進']:
         inv['shares'] += shares
         inv['cost'] += amount
-        pnl_dict[row_id] = None  # 買進不顯示損益
+        pnl_dict[row_id] = None
         
     elif t in ['sell', '賣出']:
-        # 算出「賣出當下的歷史平均成本」
         avg_cost = (inv['cost'] / inv['shares']) if inv['shares'] > 0 else 0.0
         cost_of_sold = shares * avg_cost
-        
-        # 真實損益 = 賣出總額 - (賣出股數 * 歷史均價)
         pnl_dict[row_id] = amount - cost_of_sold
-        
-        # 扣除庫存與對應成本
         inv['shares'] -= shares
         inv['cost'] -= cost_of_sold
         
     elif t in ['cash_div', '現金股利']:
-        pnl_dict[row_id] = amount  # 股息100%認列獲利
+        pnl_dict[row_id] = amount
         
     else:
         pnl_dict[row_id] = None
 
-# 將算好的真實損益，利用 id 對應回原本的資料表
 h_df['單筆損益'] = h_df['id'].map(pnl_dict)
-
-# 確保畫面顯示順序是「最新日期在最上面」
 h_df = h_df.sort_values('Date', ascending=False)
 
 st.write(f"#### 📝 詳細紀錄明細 (共 {len(h_df)} 筆)")
@@ -671,7 +650,7 @@ edited_df = st.data_editor(
         "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
         "單筆損益": st.column_config.NumberColumn("📈 單筆損益", format="%.0f"),
     },
-    disabled=["id", "單筆損益"], # 鎖定損益欄位避免誤改
+    disabled=["id", "單筆損益"], 
     hide_index=True,
     use_container_width=True,
     key="tx_editor"
@@ -699,7 +678,7 @@ if edited_rows:
                 if col_name == 'Date' and new_val:
                     update_data[col_name.lower()] = new_val.strftime("%Y-%m-%d")
                 elif col_name == '單筆損益':
-                    continue # 攔截虛擬欄位
+                    continue 
                 else:
                     update_data[col_name.lower()] = new_val
             
