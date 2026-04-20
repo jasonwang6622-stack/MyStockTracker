@@ -507,17 +507,23 @@ tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 with tab1:
     if p_data: 
         df_portfolio = pd.DataFrame(p_data)
+        
+        # 🌟 核心修改：在這裡強制排隊，指定你想要的欄位順序！
+        cols_order = ["標的", "股數", "含費均價", "最新現價", "成本金額", "市值", "未實現損益", "已實現損益", "總報酬 %"]
+        df_portfolio = df_portfolio[cols_order]
+        
         df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
         try: 
             styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
         except AttributeError: 
             styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
 
+        # 下方的 format 也順便幫你把對應的順序排整齊了，方便未來維護
         styled_df = styled_df.format({
             "股數": "{:,}", 
             "含費均價": "{:.2f}", 
-            "成本金額": "{:,}", 
             "最新現價": "{:.2f}", 
+            "成本金額": "{:,}", 
             "市值": "{:,}", 
             "未實現損益": "{:,}", 
             "已實現損益": "{:,}", 
