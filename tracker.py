@@ -458,11 +458,12 @@ for sym, d in data['inventory'].items():
             "標的": sym, 
             "股數": int(d['shares']), 
             "含費均價": d['total_cost']/d['shares'],
+            "成本金額": int(round(d['total_cost'], 0)),  # 🌟 新增：原始投資成本
             "最新現價": cur_p, 
             "市值": int(round(mv, 0)), 
             "未實現損益": int(round(upnl, 0)), 
             "已實現損益": int(round(d['realized_pnl'], 0)), 
-            "總報酬 %": roi_sym  # 🌟 這裡把原本的「未實現報酬 %」換掉了！
+            "總報酬 %": roi_sym 
         })
         
 # ------------------------------------------
