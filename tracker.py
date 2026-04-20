@@ -505,19 +505,27 @@ def color_profit_loss(val):
 tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 
 with tab1:
-    if p_data: 
-        df_portfolio = pd.DataFrame(p_data)
-        df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
-        try: 
-            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
-        except AttributeError: 
-            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+        if p_data: 
+            df_portfolio = pd.DataFrame(p_data)
+            df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
 
-        styled_df = styled_df.format({
-            "股數": "{:,}", "含費均價": "{:.2f}", "最新現價": "{:.2f}", 
-            "市值": "{:,}", "未實現損益": "{:,}", "已實現損益": "{:,}", "總報酬 %": "{:.2f}%"
-        })
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+            try: 
+                # 這裡也要記得把 '成本金額' 加入不參與上色的名單中 (或是視需求調整)
+                styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+            except AttributeError: 
+                styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+
+            styled_df = styled_df.format({
+                "股數": "{:,}", 
+                "含費均價": "{:.2f}", 
+                "成本金額": "{:,}",  # 🌟 新增：設定千分位顯示
+                "最新現價": "{:.2f}", 
+                "市值": "{:,}", 
+                "未實現損益": "{:,}", 
+                "已實現損益": "{:,}", 
+                "總報酬 %": "{:.2f}%"
+            })
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.info("目前無庫存資料。")
 
