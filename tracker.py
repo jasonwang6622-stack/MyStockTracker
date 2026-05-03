@@ -454,16 +454,41 @@ for sym, d in data['inventory'].items():
         t_upnl += upnl
         t_net_mv += net_market_value  # (確保上次修改的淨值變數有留著)
         
+        
+        # 🌟 準備計算單檔股票的 XIRR 現金流
+        sym_df = user_df[(user_df['Account'] == sel_acc) & (user_df['Symbol'] == sym)]
+        sym_cf = []
+        for _, r in sym_df.iterrows():
+            if pd.notna(r['Date']):
+                d_val = pd.to_datetime(r['Date']).date()
+                amt = float(r['Total_Amount']) if pd.notna(r['Total_Amount']) else 0.0
+                t_str = str(r['Type']).lower()
+                if 'buy' in t_str or '買' in t_str:
+                    sym_cf.append((d_val, -amt))
+                elif 'sell' in t_str or '賣' in t_str or 'div' in t_str or '股利' in t_str:
+                    sym_cf.append((d_val, amt))
+        
+        # 加上「現在市值」作為期末正現金流 (因為是現有庫存)
+        if mv > 0:
+            sym_cf.append((datetime.today().date(), mv))
+            
+        try:
+            # 呼叫系統的 xirr 演算法
+            sym_xirr = xirr([cf[0] for cf in sym_cf], [cf[1] for cf in sym_cf]) * 100 if len(sym_cf) >= 2 else 0.0
+        except:
+            sym_xirr = 0.0
+
         p_data.append({
             "標的": sym, 
             "股數": int(d['shares']), 
             "含費均價": d['total_cost']/d['shares'],
-            "成本金額": int(round(d['total_cost'], 0)),  # 🌟 新增：原始投資成本
             "最新現價": cur_p, 
+            "成本金額": int(round(d['total_cost'], 0)), 
             "市值": int(round(mv, 0)), 
             "未實現損益": int(round(upnl, 0)), 
             "已實現損益": int(round(d['realized_pnl'], 0)), 
-            "總報酬 %": roi_sym 
+            "總報酬 %": roi_sym,
+            "年化報酬 (XIRR)": sym_xirr  # 🌟 新增：單檔 XIRR 欄位
         })
         
 # ------------------------------------------
@@ -508,17 +533,17 @@ with tab1:
     if p_data: 
         df_portfolio = pd.DataFrame(p_data)
         
-        # 🌟 核心修改：在這裡強制排隊，指定你想要的欄位順序！
-        cols_order = ["標的", "股數", "含費均價", "最新現價", "成本金額", "市值", "未實現損益", "已實現損益", "總報酬 %"]
+        # 🌟 強制排隊，把 XIRR 接在總報酬 % 後面
+        cols_order = ["標的", "股數", "含費均價", "最新現價", "成本金額", "市值", "未實現損益", "已實現損益", "總報酬 %", "年化報酬 (XIRR)"]
         df_portfolio = df_portfolio[cols_order]
         
         df_portfolio = df_portfolio.sort_values(by="標的", ascending=True).reset_index(drop=True)
         try: 
-            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+            # 把 XIRR 加入紅綠上色判斷
+            styled_df = df_portfolio.style.map(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %', '年化報酬 (XIRR)'])
         except AttributeError: 
-            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %'])
+            styled_df = df_portfolio.style.applymap(color_profit_loss, subset=['未實現損益', '已實現損益', '總報酬 %', '年化報酬 (XIRR)'])
 
-        # 下方的 format 也順便幫你把對應的順序排整齊了，方便未來維護
         styled_df = styled_df.format({
             "股數": "{:,}", 
             "含費均價": "{:.2f}", 
@@ -527,7 +552,8 @@ with tab1:
             "市值": "{:,}", 
             "未實現損益": "{:,}", 
             "已實現損益": "{:,}", 
-            "總報酬 %": "{:.2f}%"
+            "總報酬 %": "{:.2f}%",
+            "年化報酬 (XIRR)": "{:.2f}%"  # 🌟 新增：帶有 % 符號的格式
         })
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
@@ -545,6 +571,23 @@ with tab2:
             
             system_rpnl = d['realized_pnl']
             roi = (system_rpnl / total_buy * 100) if total_buy > 0 else 0.0
+            
+            # 🌟 計算已出清標的的 XIRR (不需加入現在市值，因為已經賣光了)
+            sym_cf = []
+            for _, r in sym_df.iterrows():
+                if pd.notna(r['Date']):
+                    d_val = pd.to_datetime(r['Date']).date()
+                    amt = float(r['Total_Amount']) if pd.notna(r['Total_Amount']) else 0.0
+                    t_str = str(r['Type']).lower()
+                    if 'buy' in t_str or '買' in t_str:
+                        sym_cf.append((d_val, -amt))
+                    elif 'sell' in t_str or '賣' in t_str or 'div' in t_str or '股利' in t_str:
+                        sym_cf.append((d_val, amt))
+            try:
+                sym_xirr = xirr([cf[0] for cf in sym_cf], [cf[1] for cf in sym_cf]) * 100 if len(sym_cf) >= 2 else 0.0
+            except:
+                sym_xirr = 0.0
+
             cleared_data.append({
                 "標的": sym, 
                 "歷史持有股數": int(hist_shares), 
@@ -552,23 +595,31 @@ with tab2:
                 "總賣出收入": int(total_sell),
                 "股利": int(total_div), 
                 "損益": int(round(system_rpnl, 0)), 
-                "總報酬 %": roi
+                "總報酬 %": roi,
+                "年化報酬 (XIRR)": sym_xirr  # 🌟 新增
             })
             
     if cleared_data:
         df_cleared = pd.DataFrame(cleared_data)
+        
+        # 🌟 指定已出清明細的欄位順序
+        cols_order_cleared = ["標的", "歷史持有股數", "總買進成本", "總賣出收入", "股利", "損益", "總報酬 %", "年化報酬 (XIRR)"]
+        df_cleared = df_cleared[cols_order_cleared]
+        
         df_cleared = df_cleared.sort_values(by="標的", ascending=True).reset_index(drop=True)
         try: 
-            styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %'])
+            styled_cleared = df_cleared.style.map(color_profit_loss, subset=['損益', '總報酬 %', '年化報酬 (XIRR)'])
         except AttributeError: 
-            styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %'])
+            styled_cleared = df_cleared.style.applymap(color_profit_loss, subset=['損益', '總報酬 %', '年化報酬 (XIRR)'])
+            
         styled_cleared = styled_cleared.format({
             "歷史持有股數": "{:,}", 
             "總買進成本": "{:,}", 
             "總賣出收入": "{:,}", 
             "股利": "{:,}", 
             "損益": "{:,}", 
-            "總報酬 %": "{:.2f}%"
+            "總報酬 %": "{:.2f}%",
+            "年化報酬 (XIRR)": "{:.2f}%"  # 🌟 新增
         })
         st.dataframe(styled_cleared, use_container_width=True, hide_index=True)
     else:
