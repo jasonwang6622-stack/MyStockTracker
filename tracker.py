@@ -8,6 +8,34 @@ from datetime import datetime
 from supabase import create_client, Client # 🌟 換成 Supabase 套件
 import requests
 
+# 🌟 新增：XIRR 商業級安全防護閥
+def safe_xirr(cf_list):
+    try:
+        if len(cf_list) < 2: return 0.0
+        
+        cf_dates = [cf[0] for cf in cf_list]
+        cf_values = [cf[1] for cf in cf_list]
+        
+        # 1. 防呆：必須同時有資金流出(買)與流入(賣/現值)，否則無法計算
+        if not (any(v > 0 for v in cf_values) and any(v < 0 for v in cf_values)): 
+            return 0.0
+            
+        # 2. 攔截超短線：持有不到 1 天 (當沖)，算年化毫無意義，直接歸零
+        days_held = (max(cf_dates) - min(cf_dates)).days
+        if days_held < 1: 
+            return 0.0 
+            
+        # 執行正常計算
+        val = xirr(cf_dates, cf_values) * 100
+        
+        # 3. 截斷極端數字：避免短期暴賺導致數字突破天際 (最高顯示 9999%)
+        if val > 9999: return 9999.99
+        if val < -100: return -100.00
+        
+        return val
+    except:
+        return 0.0
+
 # ==========================================
 # 1. 網頁基本設定 & Supabase 連線
 # ==========================================
@@ -523,33 +551,7 @@ def color_profit_loss(val):
         elif val < 0: return 'color: #09ab3b;'
     return ''
 
-# 🌟 新增：XIRR 商業級安全防護閥
-def safe_xirr(cf_list):
-    try:
-        if len(cf_list) < 2: return 0.0
-        
-        cf_dates = [cf[0] for cf in cf_list]
-        cf_values = [cf[1] for cf in cf_list]
-        
-        # 1. 防呆：必須同時有資金流出(買)與流入(賣/現值)，否則無法計算
-        if not (any(v > 0 for v in cf_values) and any(v < 0 for v in cf_values)): 
-            return 0.0
-            
-        # 2. 攔截超短線：持有不到 1 天 (當沖)，算年化毫無意義，直接歸零
-        days_held = (max(cf_dates) - min(cf_dates)).days
-        if days_held < 1: 
-            return 0.0 
-            
-        # 執行正常計算
-        val = xirr(cf_dates, cf_values) * 100
-        
-        # 3. 截斷極端數字：避免短期暴賺導致數字突破天際 (最高顯示 9999%)
-        if val > 9999: return 9999.99
-        if val < -100: return -100.00
-        
-        return val
-    except:
-        return 0.0
+
 
 tab1, tab2 = st.tabs(["📊 現有庫存", "🏁 已出清明細"])
 
