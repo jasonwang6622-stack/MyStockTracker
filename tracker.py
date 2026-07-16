@@ -342,11 +342,13 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
 # 🌟 新增：智慧對帳單匯入 (PDF) - 位於側邊欄
 # ==========================================
 with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
-    st.caption("請直接上傳證券對帳單 PDF，系統將自動擷取交易紀錄。")
+    st.caption("請直接上傳富邦證券的對帳單 PDF，系統將自動擷取交易紀錄。")
     
     import re
     import pdfplumber
-
+    
+    # 💡 升級 1：加入密碼解鎖欄位 (富邦對帳單通常是身分證字號)
+    pdf_password = st.text_input("🔑 若 PDF 有密碼，請輸入", type="password", placeholder="身分證字號")
     uploaded_pdf = st.file_uploader("選擇 PDF 檔案", type=["pdf"], label_visibility="collapsed")
     
     if uploaded_pdf is not None:
@@ -355,19 +357,29 @@ with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
         
         # 1. 拆解 PDF 檔案萃取純文字
         try:
-            with pdfplumber.open(uploaded_pdf) as pdf:
+            # 將密碼餵給套件解鎖
+            pwd = pdf_password if pdf_password else None
+            with pdfplumber.open(uploaded_pdf, password=pwd) as pdf:
                 for page in pdf.pages:
-                    text = page.extract_text()
+                    # 💡 升級 2：開啟 layout=True，盡量保持表格的視覺排版，避免欄位錯位
+                    text = page.extract_text(layout=True) 
                     if text:
                         raw_text += text + "\n"
         except Exception as e:
-            st.error(f"❌ PDF 讀取失敗：{e}")
+            st.error(f"❌ PDF 讀取失敗，請確認密碼是否正確。系統訊息：{e}")
             
+        # 💡 升級 3：透視眼 (Debug) 區塊！讓你親眼看見機器讀到了什麼
+        if raw_text:
+            with st.expander("🔍 點我看系統讀到了什麼文字 (Debug)"):
+                st.text(raw_text)
+                st.caption("☝️ 如果上面這塊是空白的，代表 PDF 是純圖片或密碼錯誤。如果文字排版很亂，代表套件解析表格失敗。")
+        
         # 2. 進行文字正則表達式解析
         if raw_text:
             lines = raw_text.split('\n')
             for line in lines:
-                if re.match(r'^\s*1\d{2}/\d{2}/\d{2}', line.strip()):
+                # 💡 升級 4：放寬抓取標準，只要這一行「包含日期」就先抓進來試試看
+                if re.search(r'1\d{2}/\d{2}/\d{2}', line):
                     try:
                         clean_line = line.replace(',', '').replace('|', ' ')
                         words = clean_line.split()
@@ -380,7 +392,7 @@ with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
                         # 判定買賣
                         if '集賣' in clean_line or '集 賣' in clean_line:
                             tx_type = 'Sell'
-                        elif '集買' in clean_line or '集 買' in clean_line or '買(定)' in clean_line:
+                        elif '集買' in clean_line or '集 買' in clean_line or '買(定)' in clean_line or '定' in clean_line:
                             tx_type = 'Buy'
                         else:
                             continue 
@@ -419,7 +431,6 @@ with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
                 
                 preview_df = pd.DataFrame(parsed_data)
                 
-                # 側邊欄空間較小，將表格設定為可水平滑動
                 edited_import_df = st.data_editor(
                     preview_df,
                     column_config={
@@ -441,13 +452,10 @@ with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
                         record['account'] = sel_acc 
                         
                     try:
-                        # 轉換成小寫以對應資料庫欄位
                         final_records = []
                         for rec in records_to_insert:
                             lower_rec = {k.lower(): v for k, v in rec.items()}
-                            # 補上 Username
                             lower_rec['username'] = USER 
-                            # 確保必要欄位有預設值
                             lower_rec['price'] = round(lower_rec['total_amount'] / lower_rec['shares'], 2) if lower_rec['shares'] > 0 else 0
                             lower_rec['fee'] = 0
                             lower_rec['tax'] = 0
@@ -459,7 +467,7 @@ with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
                     except Exception as e:
                         st.error(f"寫入失敗：{e}")
             else:
-                st.warning("⚠️ 無法從此 PDF 中找到符合格式的交易紀錄。")
+                st.warning("⚠️ 系統無法判讀。請點開上方的「🔍 透視眼 (Debug)」檢查文字是否擠成一團。")
 # ==========================================
 # 🛠️ 側邊欄：帳戶與標的批次管理工具
 # ==========================================
