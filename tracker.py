@@ -339,102 +339,127 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                 st.error(f"❌ 匯入時發生錯誤：{e}")
 
 # ==========================================
-# 智慧對帳單匯入 (接在 CSV 匯入下方)
+# 🌟 新增：智慧對帳單匯入 (PDF) - 位於側邊欄
 # ==========================================
-st.divider()
-st.subheader("📥 智慧對帳單匯入 (Beta)")
-st.caption("請將富邦對帳單 PDF 內的文字完整複製，並貼入下方文字方塊中。")
-
-import re
-import pandas as pd
-from datetime import datetime
-
-raw_text = st.text_area("貼上對帳單文字", height=200, placeholder="範例：115/02/25 | 08323-0000878 國泰永續高股 | 集買...")
-
-if raw_text:
-    parsed_data = []
-    lines = raw_text.split('\n')
+with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
+    st.caption("請直接上傳富邦證券的對帳單 PDF，系統將自動擷取交易紀錄。")
     
-    for line in lines:
-        if re.match(r'^\s*1\d{2}/\d{2}/\d{2}', line.strip()):
-            try:
-                clean_line = line.replace(',', '').replace('|', ' ')
-                words = clean_line.split()
-                
-                # 1. 日期轉換
-                date_str = re.search(r'(1\d{2})/(\d{2})/(\d{2})', line).groups()
-                ad_year = int(date_str[0]) + 1911
-                formatted_date = f"{ad_year}-{date_str[1]}-{date_str[2]}"
-                
-                # 2. 判定買賣
-                if '集賣' in clean_line or '集 賣' in clean_line:
-                    tx_type = 'Sell'
-                elif '集買' in clean_line or '集 買' in clean_line or '買(定)' in clean_line:
-                    tx_type = 'Buy'
-                else:
-                    continue 
-                    
-                # 3. 抓取代號
-                symbol_match = re.search(r'0000(\d{2,6})|00\s*00(\d{2,6})', line)
-                if symbol_match:
-                    raw_sym = [s for s in symbol_match.groups() if s][0]
-                    symbol = raw_sym.zfill(4) if len(raw_sym) < 4 else raw_sym
-                else:
-                    symbol = "需手動確認"
-                
-                # 4. 抓取數字
-                nums = [float(w) for w in words if re.match(r'^\d+(\.\d+)?$', w)]
-                if len(nums) >= 4:
-                    shares = int(nums[0])
-                    total_amount = int(nums[-1])
-                    unit_cost = round(total_amount / shares, 2) if shares > 0 else 0.0
-                else:
-                    shares, total_amount, unit_cost = 0, 0, 0.0
-                
-                parsed_data.append({
-                    "Date": formatted_date,
-                    "Type": tx_type,
-                    "Symbol": symbol,
-                    "Shares": shares,
-                    "Total_Amount": total_amount,
-                    "Unit_Cost": unit_cost
-                })
-            except Exception as e:
-                continue
-                
-    if parsed_data:
-        st.success(f"✅ 成功解析 {len(parsed_data)} 筆交易紀錄！請在下方核對並修正錯誤：")
+    import re
+    import pdfplumber
+
+    uploaded_pdf = st.file_uploader("選擇 PDF 檔案", type=["pdf"], label_visibility="collapsed")
+    
+    if uploaded_pdf is not None:
+        parsed_data = []
+        raw_text = ""
         
-        preview_df = pd.DataFrame(parsed_data)
-        
-        edited_import_df = st.data_editor(
-            preview_df,
-            column_config={
-                "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
-                "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
-                "Symbol": st.column_config.TextColumn("🏷️ 代號"),
-                "Shares": st.column_config.NumberColumn("🔢 股數"),
-                "Total_Amount": st.column_config.NumberColumn("💰 結算總額"),
-                "Unit_Cost": st.column_config.NumberColumn("🪙 含費均價", format="%.2f"),
-            },
-            hide_index=True,
-            use_container_width=True,
-            key="pdf_import_editor"
-        )
-        
-        if st.button("🚀 確認無誤，整批寫入資料庫", type="primary", use_container_width=True):
-            records_to_insert = edited_import_df.to_dict('records')
-            for record in records_to_insert:
-                record['account'] = sel_acc 
+        # 1. 拆解 PDF 檔案萃取純文字
+        try:
+            with pdfplumber.open(uploaded_pdf) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        raw_text += text + "\n"
+        except Exception as e:
+            st.error(f"❌ PDF 讀取失敗：{e}")
+            
+        # 2. 進行文字正則表達式解析
+        if raw_text:
+            lines = raw_text.split('\n')
+            for line in lines:
+                if re.match(r'^\s*1\d{2}/\d{2}/\d{2}', line.strip()):
+                    try:
+                        clean_line = line.replace(',', '').replace('|', ' ')
+                        words = clean_line.split()
+                        
+                        # 日期轉換
+                        date_str = re.search(r'(1\d{2})/(\d{2})/(\d{2})', line).groups()
+                        ad_year = int(date_str[0]) + 1911
+                        formatted_date = f"{ad_year}-{date_str[1]}-{date_str[2]}"
+                        
+                        # 判定買賣
+                        if '集賣' in clean_line or '集 賣' in clean_line:
+                            tx_type = 'Sell'
+                        elif '集買' in clean_line or '集 買' in clean_line or '買(定)' in clean_line:
+                            tx_type = 'Buy'
+                        else:
+                            continue 
+                            
+                        # 抓取代號
+                        symbol_match = re.search(r'0000(\d{2,6})|00\s*00(\d{2,6})', line)
+                        if symbol_match:
+                            raw_sym = [s for s in symbol_match.groups() if s][0]
+                            symbol = raw_sym.zfill(4) if len(raw_sym) < 4 else raw_sym
+                        else:
+                            symbol = "需手動確認"
+                        
+                        # 抓取數字
+                        nums = [float(w) for w in words if re.match(r'^\d+(\.\d+)?$', w)]
+                        if len(nums) >= 4:
+                            shares = int(nums[0])
+                            total_amount = int(nums[-1])
+                            unit_cost = round(total_amount / shares, 2) if shares > 0 else 0.0
+                        else:
+                            shares, total_amount, unit_cost = 0, 0, 0.0
+                        
+                        parsed_data.append({
+                            "Date": formatted_date,
+                            "Type": tx_type,
+                            "Symbol": symbol,
+                            "Shares": shares,
+                            "Total_Amount": total_amount,
+                            "Unit_Cost": unit_cost
+                        })
+                    except Exception as e:
+                        continue
+                        
+            # 3. 顯示預覽並提供寫入按鈕
+            if parsed_data:
+                st.success(f"✅ 成功解析 {len(parsed_data)} 筆紀錄！請核對：")
                 
-            try:
-                supabase.table("transactions").insert(records_to_insert).execute()
-                st.balloons()
-                st.success("🎉 匯入成功！請重新整理網頁查看最新庫存。")
-            except Exception as e:
-                st.error(f"寫入失敗，請檢查資料格式：{e}")
-    else:
-        st.warning("⚠️ 找不到符合格式的交易紀錄，請確認複製的文字是否完整。")
+                preview_df = pd.DataFrame(parsed_data)
+                
+                # 側邊欄空間較小，將表格設定為可水平滑動
+                edited_import_df = st.data_editor(
+                    preview_df,
+                    column_config={
+                        "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
+                        "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
+                        "Symbol": st.column_config.TextColumn("🏷️ 代號"),
+                        "Shares": st.column_config.NumberColumn("🔢 股數"),
+                        "Total_Amount": st.column_config.NumberColumn("💰 總額"),
+                        "Unit_Cost": st.column_config.NumberColumn("🪙 均價", format="%.2f"),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    key="pdf_import_editor_sidebar"
+                )
+                
+                if st.button("🚀 確認無誤，寫入資料庫", type="primary", use_container_width=True):
+                    records_to_insert = edited_import_df.to_dict('records')
+                    for record in records_to_insert:
+                        record['account'] = sel_acc 
+                        
+                    try:
+                        # 轉換成小寫以對應資料庫欄位
+                        final_records = []
+                        for rec in records_to_insert:
+                            lower_rec = {k.lower(): v for k, v in rec.items()}
+                            # 補上 Username
+                            lower_rec['username'] = USER 
+                            # 確保必要欄位有預設值
+                            lower_rec['price'] = round(lower_rec['total_amount'] / lower_rec['shares'], 2) if lower_rec['shares'] > 0 else 0
+                            lower_rec['fee'] = 0
+                            lower_rec['tax'] = 0
+                            final_records.append(lower_rec)
+                            
+                        supabase.table("transactions").insert(final_records).execute()
+                        st.balloons()
+                        st.success("🎉 匯入成功！請重新整理。")
+                    except Exception as e:
+                        st.error(f"寫入失敗：{e}")
+            else:
+                st.warning("⚠️ 無法從此 PDF 中找到符合格式的交易紀錄。")
 # ==========================================
 # 🛠️ 側邊欄：帳戶與標的批次管理工具
 # ==========================================
