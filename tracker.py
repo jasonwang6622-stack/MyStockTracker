@@ -342,7 +342,7 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
 # 🌟 新增：智慧對帳單匯入 (PDF) - 位於側邊欄
 # ==========================================
 with st.sidebar.expander("📄 智慧對帳單匯入 (PDF)"):
-    st.caption("請直接上傳富邦證券的對帳單 PDF，系統將自動擷取交易紀錄。")
+    st.caption("請直接上傳證券對帳單 PDF，系統將自動擷取交易紀錄。")
     
     import re
     import pdfplumber
