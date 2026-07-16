@@ -337,6 +337,104 @@ with st.sidebar.expander("📂 批次匯入紀錄 (CSV)"):
                     
             except Exception as e:
                 st.error(f"❌ 匯入時發生錯誤：{e}")
+
+# ==========================================
+# 智慧對帳單匯入 (接在 CSV 匯入下方)
+# ==========================================
+st.divider()
+st.subheader("📥 智慧對帳單匯入 (Beta)")
+st.caption("請將富邦對帳單 PDF 內的文字完整複製，並貼入下方文字方塊中。")
+
+import re
+import pandas as pd
+from datetime import datetime
+
+raw_text = st.text_area("貼上對帳單文字", height=200, placeholder="範例：115/02/25 | 08323-0000878 國泰永續高股 | 集買...")
+
+if raw_text:
+    parsed_data = []
+    lines = raw_text.split('\n')
+    
+    for line in lines:
+        if re.match(r'^\s*1\d{2}/\d{2}/\d{2}', line.strip()):
+            try:
+                clean_line = line.replace(',', '').replace('|', ' ')
+                words = clean_line.split()
+                
+                # 1. 日期轉換
+                date_str = re.search(r'(1\d{2})/(\d{2})/(\d{2})', line).groups()
+                ad_year = int(date_str[0]) + 1911
+                formatted_date = f"{ad_year}-{date_str[1]}-{date_str[2]}"
+                
+                # 2. 判定買賣
+                if '集賣' in clean_line or '集 賣' in clean_line:
+                    tx_type = 'Sell'
+                elif '集買' in clean_line or '集 買' in clean_line or '買(定)' in clean_line:
+                    tx_type = 'Buy'
+                else:
+                    continue 
+                    
+                # 3. 抓取代號
+                symbol_match = re.search(r'0000(\d{2,6})|00\s*00(\d{2,6})', line)
+                if symbol_match:
+                    raw_sym = [s for s in symbol_match.groups() if s][0]
+                    symbol = raw_sym.zfill(4) if len(raw_sym) < 4 else raw_sym
+                else:
+                    symbol = "需手動確認"
+                
+                # 4. 抓取數字
+                nums = [float(w) for w in words if re.match(r'^\d+(\.\d+)?$', w)]
+                if len(nums) >= 4:
+                    shares = int(nums[0])
+                    total_amount = int(nums[-1])
+                    unit_cost = round(total_amount / shares, 2) if shares > 0 else 0.0
+                else:
+                    shares, total_amount, unit_cost = 0, 0, 0.0
+                
+                parsed_data.append({
+                    "Date": formatted_date,
+                    "Type": tx_type,
+                    "Symbol": symbol,
+                    "Shares": shares,
+                    "Total_Amount": total_amount,
+                    "Unit_Cost": unit_cost
+                })
+            except Exception as e:
+                continue
+                
+    if parsed_data:
+        st.success(f"✅ 成功解析 {len(parsed_data)} 筆交易紀錄！請在下方核對並修正錯誤：")
+        
+        preview_df = pd.DataFrame(parsed_data)
+        
+        edited_import_df = st.data_editor(
+            preview_df,
+            column_config={
+                "Date": st.column_config.DateColumn("📅 日期", format="YYYY-MM-DD"),
+                "Type": st.column_config.SelectboxColumn("🔄 類型", options=["Buy", "Sell", "Cash_Div", "Stock_Div"]),
+                "Symbol": st.column_config.TextColumn("🏷️ 代號"),
+                "Shares": st.column_config.NumberColumn("🔢 股數"),
+                "Total_Amount": st.column_config.NumberColumn("💰 結算總額"),
+                "Unit_Cost": st.column_config.NumberColumn("🪙 含費均價", format="%.2f"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="pdf_import_editor"
+        )
+        
+        if st.button("🚀 確認無誤，整批寫入資料庫", type="primary", use_container_width=True):
+            records_to_insert = edited_import_df.to_dict('records')
+            for record in records_to_insert:
+                record['account'] = sel_acc 
+                
+            try:
+                supabase.table("transactions").insert(records_to_insert).execute()
+                st.balloons()
+                st.success("🎉 匯入成功！請重新整理網頁查看最新庫存。")
+            except Exception as e:
+                st.error(f"寫入失敗，請檢查資料格式：{e}")
+    else:
+        st.warning("⚠️ 找不到符合格式的交易紀錄，請確認複製的文字是否完整。")
 # ==========================================
 # 🛠️ 側邊欄：帳戶與標的批次管理工具
 # ==========================================
